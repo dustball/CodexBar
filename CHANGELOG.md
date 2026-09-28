@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Codex: remember Gatekeeper verdicts for unchanged standalone CLI binaries instead of running `spctl --assess` on every lookup, which kept `syspolicyd` busy in proportion to the refresh cadence. Fixes #4078.
 - Token history: show observed model names when per-model totals are unavailable, including Grok local sessions (#4056). Fixes #4054. Thanks @BUKOWSKIREAL!
 - TypeSafe: show the credit balance in the menu bar and layout preview instead of missing-value dashes, using shared balance-label metadata (#4050). Thanks @lg!
 - Grok: retain the product usage breakdown on the grok.com billing fallback, with bounded shared protobuf decoding (#4041). Thanks @olddonkey!

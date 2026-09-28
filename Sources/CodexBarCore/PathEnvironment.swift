@@ -454,7 +454,7 @@ public enum CodexLaunchPreflight {
             path: path,
             fileManager: fileManager,
             hasExtendedAttribute: self.hasExtendedAttribute,
-            spctlAssessment: { self.spctlAssessment(path: $0) },
+            spctlAssessment: { self.memoizedSpctlAssessment(path: $0) },
             appSignatureIsTrusted: self.isExpectedOpenAIAppSignature,
             isMachOExecutable: self.isMachOExecutable)
         #else
@@ -594,6 +594,13 @@ public enum CodexLaunchPreflight {
             bytes == [0xCA, 0xFE, 0xBA, 0xBF]
     }
 
+    private static func memoizedSpctlAssessment(path: String) -> GatekeeperAssessment? {
+        AssessmentMemo.shared.assessment(
+            path: path,
+            isDefinitive: { self.isDefinitiveAssessment($0.output, path: path) },
+            assess: { self.spctlAssessment(path: $0) })
+    }
+
     private static func spctlAssessment(path: String, timeout: TimeInterval = 5.0) -> GatekeeperAssessment? {
         let spctlPath = "/usr/sbin/spctl"
         guard FileManager.default.isExecutableFile(atPath: spctlPath) else { return nil }
@@ -659,6 +666,17 @@ public enum CodexLaunchPreflight {
             .first?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .localizedCaseInsensitiveCompare("accepted") == .orderedSame
+    }
+
+    /// A verdict worth remembering; `spctl` errors (for example `syspolicyd` unavailable) are neither.
+    static func isDefinitiveAssessment(_ assessment: String, path: String) -> Bool {
+        guard let verdict = self.assessmentDiagnosticText(assessment, path: path)
+            .split(whereSeparator: \.isNewline)
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        else { return false }
+        return verdict.hasPrefix("accepted") || verdict.hasPrefix("rejected")
     }
 
     private static func isExplicitlyBlockedAssessment(_ assessment: String, path: String) -> Bool {
