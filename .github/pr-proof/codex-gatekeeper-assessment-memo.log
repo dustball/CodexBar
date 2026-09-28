@@ -56,3 +56,21 @@ remembered entry is found and before it is returned.
 
 The remembered "allowed" for codex did not reach the decision for the ad-hoc binary: the path re-check
 before answering saw a different file and ran a fresh, unshared assessment instead.
+
+Exact-head packaged app, before and after (2026-09-28, 13:18-14:24, back to back, 30 minutes each).
+Same Mac and codex binary. CODEX_CLI_PATH not in effect (pointed at a nonexistent file, which both
+resolvers ignore, so the normal lookup and preflight run). CodexBar's child processes sampled every
+second; syspolicyd CPU from ps; the spctl counts match the unified log (process == "spctl") exactly.
+
+                                        spctl runs  at launch  5 refreshes after    syspolicyd CPU
+  official 0.68.0 (Developer ID)            14          4      10, a pair on each       50.2 s
+  this PR (0.68.1 build 160, ad-hoc,        10          2       8, none on one          33.4 s
+  memo/preflight/test files as this head)
+
+This Mac was under memory pressure (32 GB RAM, 8 GB of swap in use), so the 281 MB binary was
+usually evicted between 5-minute refreshes. The first assessment of a refresh then ran into the
+existing 5 s timeout (spctl killed at 5.0 s) and, as on main, was not remembered; the second, on a
+warmer file, often finished in 3-4 s. On main that verdict is discarded. With the memo it is kept:
+the refresh at +20:08 launched codex with no spctl at all. At launch, main ran three overlapping
+assessments of the same file; with the memo, lookups that overlapped shared one assessment.
+The saving here is in how many assessments run, not in what one costs.
