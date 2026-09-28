@@ -53,9 +53,11 @@ extension CodexLaunchPreflight {
         private var entries: [FileIdentity: (assessment: GatekeeperAssessment, expiresAt: TimeInterval)] = [:]
         private var flights: [FileIdentity: Flight] = [:]
         private let onJoin: @Sendable () -> Void
+        private let onCacheHit: @Sendable () -> Void
 
-        init(onJoin: @escaping @Sendable () -> Void = {}) {
+        init(onJoin: @escaping @Sendable () -> Void = {}, onCacheHit: @escaping @Sendable () -> Void = {}) {
             self.onJoin = onJoin
+            self.onCacheHit = onCacheHit
         }
 
         /// Returns the remembered verdict for the unchanged regular file `path` names, or assesses it. Only
@@ -73,17 +75,14 @@ extension CodexLaunchPreflight {
             self.lock.lock()
             if let entry = self.entries[file], now < entry.expiresAt {
                 self.lock.unlock()
-                return Self.attributed(entry.assessment, from: file.volumePath, to: path)
+                self.onCacheHit()
+                return Self.deliver(entry.assessment, bound: true, file: file, path: path, assess: assess)
             }
             if let flight = self.flights[file] {
                 self.lock.unlock()
                 self.onJoin()
                 let shared = flight.wait()
-                // The verdict speaks for the file that was assessed; this caller's path must still name it.
-                if shared.bound, FileIdentity(path: path) == file {
-                    return Self.attributed(shared.assessment, from: file.volumePath, to: path)
-                }
-                return assess(path)
+                return Self.deliver(shared.assessment, bound: shared.bound, file: file, path: path, assess: assess)
             }
             let flight = Flight()
             self.flights[file] = flight
@@ -107,11 +106,21 @@ extension CodexLaunchPreflight {
                 flight.complete(result, bound: bound)
                 self.flights.removeValue(forKey: file)
             }
-            // A verdict for a file the path no longer names is not an answer for this lookup.
-            if bound, FileIdentity(path: path) == file {
-                return Self.attributed(result, from: file.volumePath, to: path)
-            }
-            return assess(path)
+            return Self.deliver(result, bound: bound, file: file, path: path, assess: assess)
+        }
+
+        /// Every answer (cache hit, shared, or fresh) is checked against what the caller's path names
+        /// immediately before it is returned. A verdict for a file the path no longer names is not an answer
+        /// for this lookup, so the caller gets a fresh, unshared assessment of its path instead.
+        private static func deliver(
+            _ assessment: GatekeeperAssessment?,
+            bound: Bool,
+            file: FileIdentity,
+            path: String,
+            assess: (String) -> GatekeeperAssessment?) -> GatekeeperAssessment?
+        {
+            guard bound, FileIdentity(path: path) == file else { return assess(path) }
+            return self.attributed(assessment, from: file.volumePath, to: path)
         }
 
         /// `spctl` names the path it was given at the start of its first line; report the caller's path.

@@ -338,6 +338,33 @@ struct CodexLaunchPreflightAssessmentMemoTests {
     }
 
     @Test
+    func `a cache hit revalidates the caller's path before answering`() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let signed = try fixture.executable("codex-signed", contents: "signed release")
+        let unsigned = try fixture.executable("codex-unsigned", contents: "unsigned build")
+        let link = fixture.root.appendingPathComponent("codex")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: signed)
+        let armed = Counter()
+        // Fires after the remembered entry is found and before it is returned: the narrowest cache-hit window.
+        let memo = Memo(onCacheHit: {
+            guard armed.count == 1 else { return }
+            try? FileManager.default.removeItem(at: link)
+            try? FileManager.default.createSymbolicLink(at: link, withDestinationURL: unsigned)
+        })
+        let calls = Counter()
+
+        #expect(Self.decide(memo, link.path, calls: calls))
+        #expect(Self.decide(memo, link.path, calls: calls))
+        #expect(calls.count == 1)
+
+        armed.increment()
+        // The signed CLI's remembered "allowed" must not reach the decision for the unsigned one.
+        #expect(!Self.decide(memo, link.path, calls: calls))
+        #expect(calls.count == 2)
+    }
+
+    @Test
     func `verdicts are reported for the caller's path, not the inode path assessed`() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
