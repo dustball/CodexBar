@@ -1346,7 +1346,7 @@ public enum ClaudeOAuthCredentialsStore {
     private struct Refresher {
         let context: CollaboratorContext
         let profileIdentifier: String
-        let environment: [String: String]
+        @ProcessEnvironment private(set) var environment: [String: String]
 
         func refreshAccessToken(
             refreshToken: String,

@@ -2,6 +2,10 @@
 
 ## 0.69.1 — Unreleased
 
+### Security
+
+- Redact every remaining stored process environment in the app, CLI, provider contexts, and session scanners, and guard against new unredacted environment properties with a repository check (#4106).
+
 ### Fixed
 
 - Codex: remember Gatekeeper verdicts for unchanged standalone CLI binaries, bound to the file actually assessed, instead of running `spctl --assess` on every lookup, which kept `syspolicyd` busy in proportion to the refresh cadence (#4078, #4080). Thanks @dustball!

@@ -819,7 +819,7 @@ public struct CostUsageFetcher: Sendable {
         let includePiSessions: Bool
         let shouldMergePiUsage: Bool
         let scanOptions: CostUsageScanner.Options
-        let environment: [String: String]
+        @ProcessEnvironment private(set) var environment: [String: String]
         let piOptions: PiSessionCostScanner.Options
         let reportContext: CostUsageReportContext?
     }

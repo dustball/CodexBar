@@ -182,11 +182,18 @@ their `_PATH` suffix otherwise matches `_PAT`. Other matching variables, includi
 Use synthetic dictionaries or set synthetic sentinels inside fixtures; never depend on inherited real credentials.
 For direct `swift test`, source the script in a Bash subshell first. This does not authorize live account tests.
 
-`ProcessEnvironment` provides count-only descriptions and reflection for stored environment dictionaries.
-The Codex and Claude usage fetchers and shared fetch context use it so failed expectations cannot expand their
-stored environments. Explicit dictionary access still returns the original values for provider/subprocess use;
-never log that dictionary. Other stored environment types still need migration, so harness scrubbing remains
-essential and does not replace a review of debug output before sharing it.
+`@ProcessEnvironment` provides count-only descriptions and reflection for stored process-environment dictionaries
+throughout the app, CLI, provider contexts, and session scanners. Use it on every stored environment, including
+captured configuration structs and optional dictionaries. Optional storage preserves `nil` versus an empty map;
+equality still compares the original contents. Keep formerly immutable properties `private(set)`.
+Explicit dictionary access still returns the original values for provider/subprocess use; never log that dictionary.
+Harness scrubbing remains essential and does not replace a review of debug output before sharing it.
+
+`ProcessEnvironmentStorageTests` scans shipped Swift in `Sources/` and `WidgetExtension/` for environment-named
+dictionary declarations (including optional, multiline, and `Dictionary<String, String>` spellings). This lexical
+tripwire checks locals too; its exact-source allowlist documents only transient dictionaries and rejects stale or
+duplicate exceptions. Computed getters and function parameters are not storage. Inferred types, aliases, differently
+named dictionaries, and explicit dictionary logging still require code review; this is not a Swift dataflow analyzer.
 
 Lint tools are installed at repository-pinned versions by `Scripts/install_lint_tools.sh`, with archive checksums
 verified before installation. TypeScript 7 installs its native package for the running Node platform and architecture

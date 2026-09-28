@@ -9,7 +9,7 @@ private struct CodexCostCatchUpContext {
     let providerConfigRevision: UInt64
     let costUsageSettingsRevision: UInt64
     let includePiSessions: Bool
-    let environment: [String: String]
+    @ProcessEnvironment private(set) var environment: [String: String]
     let piHistoryScopeGeneration: UInt64
 }
 
