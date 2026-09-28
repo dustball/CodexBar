@@ -221,6 +221,115 @@ struct CodexLaunchPreflightAssessmentMemoTests {
     }
 
     @Test
+    func `a link swapped during assessment and swapped back is not remembered`() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let original = try fixture.executable("codex-original", contents: "original release")
+        let other = try fixture.executable("codex-other", contents: "some other executable")
+        let link = fixture.root.appendingPathComponent("codex")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: original)
+        let memo = Memo()
+        let calls = Counter()
+        let swap = { (destination: URL) in
+            try? FileManager.default.removeItem(at: link)
+            try? FileManager.default.createSymbolicLink(at: link, withDestinationURL: destination)
+        }
+
+        // spctl would have assessed `other`; by the time it returns the link names `original` again.
+        _ = memo.assessment(path: link.path, isDefinitive: { _ in true }, assess: { _ in
+            calls.increment()
+            swap(other)
+            swap(original)
+            return Assessment(output: Self.notAnApp, exitStatus: 3)
+        })
+        _ = Self.assess(memo, link.path, calls: calls)
+        #expect(calls.count == 2)
+
+        // An undisturbed assessment is remembered as usual.
+        _ = Self.assess(memo, link.path, calls: calls)
+        #expect(calls.count == 2)
+    }
+
+    @Test
+    func `an intermediate directory link swapped during assessment is not remembered`() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let manager = FileManager.default
+        for release in ["release-1", "release-2"] {
+            let bin = fixture.root.appendingPathComponent("\(release)/bin")
+            try manager.createDirectory(at: bin, withIntermediateDirectories: true)
+            try Data(release.utf8).write(to: bin.appendingPathComponent("codex"))
+        }
+        let current = fixture.root.appendingPathComponent("current")
+        try manager.createSymbolicLink(atPath: current.path, withDestinationPath: "release-1")
+        let codex = current.appendingPathComponent("bin/codex").path
+        let memo = Memo()
+        let calls = Counter()
+
+        _ = memo.assessment(path: codex, isDefinitive: { _ in true }, assess: { _ in
+            calls.increment()
+            try? manager.removeItem(at: current)
+            try? manager.createSymbolicLink(atPath: current.path, withDestinationPath: "release-2")
+            try? manager.removeItem(at: current)
+            try? manager.createSymbolicLink(atPath: current.path, withDestinationPath: "release-1")
+            return Assessment(output: Self.notAnApp, exitStatus: 3)
+        })
+        _ = Self.assess(memo, codex, calls: calls)
+
+        #expect(calls.count == 2)
+    }
+
+    @Test
+    func `launch decisions follow the memoized verdict to the final effect`() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let codex = try fixture.executable("codex", contents: "signed release")
+        let memo = Memo()
+        let calls = Counter()
+        var revoked = false
+        let decide = { (now: TimeInterval) -> Bool in
+            CodexLaunchPreflight.isLaunchCandidateAllowed(
+                path: codex.path,
+                fileManager: .default,
+                hasExtendedAttribute: { _, _ in false },
+                spctlAssessment: { path in
+                    memo.assessment(
+                        path: path,
+                        now: now,
+                        isDefinitive: { CodexLaunchPreflight.isDefinitiveAssessment($0.output, path: path) },
+                        assess: { path in
+                            calls.increment()
+                            let unsigned = (try? String(contentsOfFile: path, encoding: .utf8)) != "signed release"
+                            let verdict = revoked
+                                ? "rejected (CSSMERR_TP_CERT_REVOKED)"
+                                : unsigned ? "rejected\nsource=no usable signature" : Self.notAnApp
+                            return Assessment(output: "\(path): \(verdict)", exitStatus: 3)
+                        })
+                },
+                appSignatureIsTrusted: { _ in false },
+                isMachOExecutable: { _ in true })
+        }
+
+        #expect(decide(0))
+        #expect(decide(1))
+        #expect(calls.count == 1)
+
+        // Replacing the executable is caught on the next lookup, not after the lifetime.
+        try Data("unsigned replacement".utf8).write(to: codex)
+        #expect(!decide(2))
+        #expect(!decide(3))
+        #expect(calls.count == 2)
+
+        // A revocation that leaves the file untouched takes effect once the verdict expires.
+        try Data("signed release".utf8).write(to: codex)
+        #expect(decide(4))
+        revoked = true
+        #expect(decide(4 + Memo.lifetime - 1))
+        #expect(!decide(4 + Memo.lifetime))
+        #expect(calls.count == 4)
+    }
+
+    @Test
     func `only accepted and rejected verdicts are definitive`() {
         let path = "/tools/bin/codex"
         #expect(CodexLaunchPreflight.isDefinitiveAssessment("\(path): \(Self.notAnApp)", path: path))
