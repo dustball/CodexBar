@@ -220,14 +220,45 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         #expect(calls.count == paths.count + 1)
     }
 
+    /// A final launch decision through the production preflight, with Gatekeeper faked from file contents:
+    /// "signed release" is a valid CLI (allowed), anything else has no usable signature (blocked).
+    private static func decide(
+        _ memo: Memo,
+        _ path: String,
+        now: TimeInterval = 0,
+        calls: Counter,
+        during: @escaping (Int) -> Void = { _ in }) -> Bool
+    {
+        CodexLaunchPreflight.isLaunchCandidateAllowed(
+            path: path,
+            fileManager: .default,
+            hasExtendedAttribute: { _, _ in false },
+            spctlAssessment: { candidate in
+                memo.assessment(
+                    path: candidate,
+                    now: now,
+                    isDefinitive: { CodexLaunchPreflight.isDefinitiveAssessment($0.output, path: candidate) },
+                    assess: { assessed in
+                        calls.increment()
+                        let contents = try? String(contentsOfFile: assessed, encoding: .utf8)
+                        during(calls.count)
+                        let verdict = contents == "signed release"
+                            ? Self.notAnApp : "rejected\nsource=no usable signature"
+                        return Assessment(output: "\(assessed): \(verdict)", exitStatus: 3)
+                    })
+            },
+            appSignatureIsTrusted: { _ in false },
+            isMachOExecutable: { _ in true })
+    }
+
     @Test
-    func `a link swapped during assessment and swapped back is not remembered`() throws {
+    func `a link swapped during assessment cannot lend its target's verdict`() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let original = try fixture.executable("codex-original", contents: "original release")
-        let other = try fixture.executable("codex-other", contents: "some other executable")
+        let unsigned = try fixture.executable("codex-unsigned", contents: "unsigned build")
+        let signed = try fixture.executable("codex-signed", contents: "signed release")
         let link = fixture.root.appendingPathComponent("codex")
-        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: original)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: unsigned)
         let memo = Memo()
         let calls = Counter()
         let swap = { (destination: URL) in
@@ -235,34 +266,28 @@ struct CodexLaunchPreflightAssessmentMemoTests {
             try? FileManager.default.createSymbolicLink(at: link, withDestinationURL: destination)
         }
 
-        // spctl would have assessed `other`; by the time it returns the link names `original` again.
-        _ = memo.assessment(path: link.path, isDefinitive: { _ in true }, assess: { _ in
-            calls.increment()
-            if calls.count == 1 {
-                swap(other)
-                swap(original)
+        // The link names the signed CLI while spctl runs and the unsigned one again when it returns.
+        #expect(!Self.decide(memo, link.path, calls: calls, during: { call in
+            if call == 1 {
+                swap(signed)
+                swap(unsigned)
             }
-            return Assessment(output: Self.notAnApp, exitStatus: 3)
-        })
-        // The disturbed verdict was neither returned nor kept: the caller got a fresh assessment.
-        #expect(calls.count == 2)
-        _ = Self.assess(memo, link.path, calls: calls)
-        #expect(calls.count == 3)
-
-        // An undisturbed assessment is remembered as usual.
-        _ = Self.assess(memo, link.path, calls: calls)
-        #expect(calls.count == 3)
+        }))
+        // Gatekeeper assessed the unsigned file by inode, so the swap changed nothing and the verdict holds.
+        #expect(calls.count == 1)
+        #expect(!Self.decide(memo, link.path, calls: calls))
+        #expect(calls.count == 1)
     }
 
     @Test
-    func `an intermediate directory link swapped during assessment is not remembered`() throws {
+    func `an intermediate directory link swapped during assessment cannot lend its verdict`() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let manager = FileManager.default
-        for release in ["release-1", "release-2"] {
+        for (release, contents) in [("release-1", "unsigned build"), ("release-2", "signed release")] {
             let bin = fixture.root.appendingPathComponent("\(release)/bin")
             try manager.createDirectory(at: bin, withIntermediateDirectories: true)
-            try Data(release.utf8).write(to: bin.appendingPathComponent("codex"))
+            try Data(contents.utf8).write(to: bin.appendingPathComponent("codex"))
         }
         let current = fixture.root.appendingPathComponent("current")
         try manager.createSymbolicLink(atPath: current.path, withDestinationPath: "release-1")
@@ -270,20 +295,65 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         let memo = Memo()
         let calls = Counter()
 
-        _ = memo.assessment(path: codex, isDefinitive: { _ in true }, assess: { _ in
-            calls.increment()
-            if calls.count == 1 {
-                try? manager.removeItem(at: current)
-                try? manager.createSymbolicLink(atPath: current.path, withDestinationPath: "release-2")
-                try? manager.removeItem(at: current)
-                try? manager.createSymbolicLink(atPath: current.path, withDestinationPath: "release-1")
-            }
-            return Assessment(output: Self.notAnApp, exitStatus: 3)
-        })
-        #expect(calls.count == 2)
-        _ = Self.assess(memo, codex, calls: calls)
+        #expect(!Self.decide(memo, codex, calls: calls, during: { call in
+            guard call == 1 else { return }
+            try? manager.removeItem(at: current)
+            try? manager.createSymbolicLink(atPath: current.path, withDestinationPath: "release-2")
+            try? manager.removeItem(at: current)
+            try? manager.createSymbolicLink(atPath: current.path, withDestinationPath: "release-1")
+        }))
+        #expect(!Self.decide(memo, codex, calls: calls))
+        #expect(calls.count == 1)
+    }
 
-        #expect(calls.count == 3)
+    @Test
+    func `a parent directory swapped during assessment and restored cannot lend its verdict`() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let manager = FileManager.default
+        for (name, contents) in [("tool", "unsigned build"), ("signed", "signed release")] {
+            let bin = fixture.root.appendingPathComponent("\(name)/bin")
+            try manager.createDirectory(at: bin, withIntermediateDirectories: true)
+            try Data(contents.utf8).write(to: bin.appendingPathComponent("codex"))
+        }
+        let tool = fixture.root.appendingPathComponent("tool")
+        let signed = fixture.root.appendingPathComponent("signed")
+        let aside = fixture.root.appendingPathComponent("tool-aside")
+        let codex = tool.appendingPathComponent("bin/codex").path
+        let memo = Memo()
+        let calls = Counter()
+
+        // The unsigned tool is moved aside, the signed one takes its pathname while spctl runs, and the
+        // original is restored before it returns.
+        #expect(!Self.decide(memo, codex, calls: calls, during: { call in
+            guard call == 1 else { return }
+            try? manager.moveItem(at: tool, to: aside)
+            try? manager.moveItem(at: signed, to: tool)
+            try? manager.moveItem(at: tool, to: signed)
+            try? manager.moveItem(at: aside, to: tool)
+        }))
+        #expect(!Self.decide(memo, codex, calls: calls))
+        #expect(!Self.decide(memo, codex, calls: calls))
+        #expect(calls.count == 1)
+    }
+
+    @Test
+    func `verdicts are reported for the caller's path, not the inode path assessed`() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let codex = try fixture.executable("codex")
+        let memo = Memo()
+        var assessedPaths: [String] = []
+        let first = memo.assessment(path: codex.path, isDefinitive: { _ in true }, assess: { assessed in
+            assessedPaths.append(assessed)
+            return Assessment(output: "\(assessed): \(Self.notAnApp)", exitStatus: 3)
+        })
+        let second = memo.assessment(path: codex.path, isDefinitive: { _ in true }, assess: { _ in nil })
+
+        #expect(assessedPaths.count == 1)
+        #expect(assessedPaths.first?.hasPrefix("/.vol/") == true)
+        #expect(first?.output.hasPrefix("\(codex.path): rejected") == true)
+        #expect(second?.output == first?.output)
     }
 
     @Test
