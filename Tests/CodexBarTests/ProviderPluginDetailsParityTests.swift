@@ -156,7 +156,7 @@ struct ProviderPluginDetailsParityTests {
             transport: transport,
             contextOptions: ProviderPluginContextOptions(
                 optionalRequestTimeoutSeconds: 1,
-                beforeHTTPAttempt: {
+                beforeHTTPAttempt: { _ in
                     // Model a task queued longer than the attempt budget before the transport begins.
                     if delaysTaskStart { try await Task.sleep(for: .milliseconds(1500)) }
                 }),

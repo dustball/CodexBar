@@ -1241,6 +1241,11 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This provider-specific app branch passes its already-selected identity to a shared helper."),
         SuppressedProviderReference(
             path: "Sources/CodexBar/UsageStore+Refresh.swift",
+            anchor: "let resetBackfillSource = provider == .codex && Self.codexPlanChanged(from: resetBackfillSource, to: snapshot)",
+            expectedProviderIDs: ["codex"],
+            reason: "Codex subscription changes must not inherit reset times from the previous plan."),
+        SuppressedProviderReference(
+            path: "Sources/CodexBar/UsageStore+Refresh.swift",
             anchor: "previousSourceLabel: hydratedPrior?.sourceLabel ?? self.lastSourceLabels[.codex],",
             expectedProviderIDs: ["codex"],
             reason: "This Codex publication preparation reads the already-selected provider source label."),
@@ -1506,11 +1511,6 @@ struct ProviderArchitectureGatekeeperTests {
             expectedProviderIDs: ["codex"],
             reason: "This provider-specific core branch passes its already-selected identity to a shared helper."),
         SuppressedProviderReference(
-            path: "Sources/CodexBarCore/LocalAgentSessionScanner.swift",
-            anchor: "provider: .codex,",
-            expectedProviderIDs: ["codex"],
-            reason: "This provider-specific core branch passes its already-selected identity to a shared helper."),
-        SuppressedProviderReference(
             path: "Sources/CodexBarCore/OpenAIWeb/OpenAIDashboardBrowserCookieImporter.swift",
             anchor: "CookieHeaderCache.loadSerialized(provider: .codex, scope: cacheScope)",
             expectedProviderIDs: ["codex"],
@@ -1688,16 +1688,6 @@ struct ProviderArchitectureGatekeeperTests {
             anchor: "if lowercasedTitle.contains(\"claude\") || lowercasedTitle.contains(\"gpt\") {",
             expectedProviderIDs: ["claude"],
             reason: "Antigravity quota titles use this token to identify a model family for display."),
-        SuppressedProviderReference(
-            path: "Sources/CodexBarCore/Providers/Antigravity/AntigravityStatusProbe.swift",
-            anchor: "if title.contains(\"gemini\") {",
-            expectedProviderIDs: ["gemini"],
-            reason: "Antigravity quota titles use this token to rank a model family."),
-        SuppressedProviderReference(
-            path: "Sources/CodexBarCore/Providers/Antigravity/AntigravityStatusProbe.swift",
-            anchor: "if title.contains(\"claude\") || title.contains(\"gpt\") {",
-            expectedProviderIDs: ["claude"],
-            reason: "Antigravity quota titles use this token to rank a model family."),
         SuppressedProviderReference(
             path: "Sources/CodexBarCore/Providers/AzureOpenAI/AzureOpenAIUsageFetcher.swift",
             anchor: "let base = self.apiRoot(endpoint: endpoint, pathComponents: [\"openai\", \"v1\"])",
@@ -3397,13 +3387,6 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact host integration maps a provider-owned process, path, or window contract."),
         AllowedProviderConstruct(
             path: "Sources/CodexBarCore/AgentSession.swift",
-            anchor: "guard record.executableBasename.lowercased() == AgentSession.Provider.codex.rawValue,",
-            expectedProviderIDs: ["codex"],
-            expectedReferenceCount: 1,
-            expectedReferenceFingerprint: ["codex@0"],
-            reason: "This exact host integration recognizes only the Codex app-server bundled in ChatGPT.app."),
-        AllowedProviderConstruct(
-            path: "Sources/CodexBarCore/AgentSession.swift",
             anchor: "URL(fileURLWithPath: $0).lastPathComponent == AgentSession.Provider.claude.rawValue",
             expectedProviderIDs: ["claude"],
             expectedReferenceCount: 1,
@@ -3468,10 +3451,10 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact cost scanner dispatch selects a provider-owned transcript, cache, or pricing format."),
         AllowedProviderConstruct(
             path: "Sources/CodexBarCore/LocalAgentSessionScanner.swift",
-            anchor: "guard AgentPSOutputParser.provider(for: process) == .codex else { return nil }",
+            anchor: "let codexCWDs = processes.filter { AgentPSOutputParser.provider(for: $0) == .codex }",
             expectedProviderIDs: ["codex"],
             expectedReferenceCount: 2,
-            expectedReferenceFingerprint: ["codex@0", "codex@4"],
+            expectedReferenceFingerprint: ["codex@0", "codex@3"],
             reason: "This exact host integration maps a provider-owned process, path, or window contract."),
         AllowedProviderConstruct(
             path: "Sources/CodexBarCore/LocalAgentSessionScanner.swift",
@@ -3483,16 +3466,9 @@ struct ProviderArchitectureGatekeeperTests {
         AllowedProviderConstruct(
             path: "Sources/CodexBarCore/LocalAgentSessionScanner.swift",
             anchor: "let codexProcesses = processes.filter { AgentPSOutputParser.provider(for: $0) == .codex }",
-            expectedProviderIDs: ["claude", "codex"],
-            expectedReferenceCount: 3,
-            expectedReferenceFingerprint: ["codex@0", "claude@9", "claude@13"],
-            reason: "This exact host integration maps a provider-owned process, path, or window contract."),
-        AllowedProviderConstruct(
-            path: "Sources/CodexBarCore/LocalAgentSessionScanner.swift",
-            anchor: "case .codex:",
-            expectedProviderIDs: ["codex"],
-            expectedReferenceCount: 1,
-            expectedReferenceFingerprint: ["codex@0"],
+            expectedProviderIDs: ["claude", "codex", "pi"],
+            expectedReferenceCount: 5,
+            expectedReferenceFingerprint: ["codex@0", "pi@7", "codex@9", "claude@14", "claude@22"],
             reason: "This exact host integration maps a provider-owned process, path, or window contract."),
         AllowedProviderConstruct(
             path: "Sources/CodexBarCore/OpenAIDashboardModels.swift",

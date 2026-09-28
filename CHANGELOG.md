@@ -2,6 +2,10 @@
 
 ## 0.68.1 — Unreleased
 
+### Security
+
+- Tests: scrub inherited credentials from test runners and redact stored environment dictionaries in Codex/Claude usage fetcher and shared fetch-context debug output.
+
 ### Added
 
 - Claude: show saved usage-limit resets and their expiry from the Web source in the menu and `codexbar usage` details (#4048). Thanks @enieuwy!
@@ -9,10 +13,30 @@
 ### Fixed
 
 - Codex: remember Gatekeeper verdicts for unchanged standalone CLI binaries, bound to the file actually assessed, instead of running `spctl --assess` on every lookup, which kept `syspolicyd` busy in proportion to the refresh cadence (#4080). Fixes #4078.
+- Codex: retry brief credential-file publication races before reporting refresh errors, and discard the previous plan's quota baseline after a subscription change so fresh usage can appear (#3635, #3389).
+- Development: restore test compilation on Xcode 26.3 / Swift 6.2 and check app, CLI, and test compatibility in CI (#4070). Thanks @RowboTony!
+- Configuration: treat empty or whitespace-only config files like missing files so usage keeps working; settings saves write valid JSON, while malformed non-empty files still report errors (#4071).
+- Menu bar: reject corrupt saved positions during status-item visibility changes and removal while preserving valid placement across restarts (#3355).
+- Codex: publish newly validated token and cost totals after each catch-up pass, even when an earlier snapshot was already shown and historical scanning is still pending (#3508). Thanks @kernnel!
+- Claude: retain valid in-memory credentials after a rejected OAuth cache write once stale-cache cleanup succeeds, so the next automatic refresh can recover without another manual Refresh (#3395). Thanks @lozcalver!
+- Keychain: bound stalled code-signature validation so it cannot hold cache locks and freeze all provider refreshes indefinitely (#3249). Thanks @SilentKnight87!
+
+- Antigravity: preserve grouped OAuth quotas, including weekly-only Starter allowances, and honor explicit quota-window cadence using the shared CLI parser (#2427, #3789).
+- Kimi: direct stale CLI sessions to run `kimi` or configure an API key in Settings, while retaining web fallback and leaving rotating CLI credentials read-only (#4063). Thanks @kid0114!
+- Claude and Vertex: reuse freshly saved cost-history rows, skip encoding unchanged caches, and compact retained row fields to reduce CPU and disk writes during repeated refreshes (#3882, #3247, #3323).
+- Kimi Code: mark shorter Code windows as blocked when the known monthly membership pool is exhausted, without showing fresh quota or pace forecasts (#3536).
+- z.ai: explain unavailable Coding Plan usage for empty or unsupported quota shapes while preserving recognized quotas and analytics (#2522).
+- Grok: keep local token totals visible in Usage & Spend and shared cards across wider history views and billing outages, with consistent daily scan windows (#3716). Thanks @Chipagosfinest!
+- Adaptive refresh: recognize ChatGPT's nested Codex app-server with per-scan running-process validation and update-aware signed-bundle assessment caching, avoiding repeated Gatekeeper subprocesses while keeping idle servers at the normal cadence (#4069, #4090).
+- Widgets: retain each eligible provider's last-good reading and original age after failed refreshes, even when another provider is unavailable, disabled, or changes accounts (#3500).
 - Token history: show observed model names when per-model totals are unavailable, including Grok local sessions (#4056). Fixes #4054. Thanks @BUKOWSKIREAL!
 - TypeSafe: show the credit balance in the menu bar and layout preview instead of missing-value dashes, using shared balance-label metadata (#4050). Thanks @lg!
 - Grok: retain the product usage breakdown on the grok.com billing fallback, with bounded shared protobuf decoding (#4041). Thanks @olddonkey!
+- Browser sessions: preserve interactive cookie-refresh authorization across plugin engine callbacks (#4098).
+
 ### Changed
+
+- Notion AI and ZoomMate: run usage fetching through bundled plugins while preserving browser-session reuse, validated cache migration, Notion over-quota values, and ZoomMate credits history (#4098).
 
 - Plugins: user plugins now get their own switcher tab by default when Merge Icons is on; set `topLevel: false` to keep the appended card.
 - Menu bar: align the persistent Refresh row with other menu actions by removing its decorative icon, preserving the shortcut and accessibility action (#4057). Thanks @elijahfriedman!
@@ -21,7 +45,10 @@
 - Claude: retain priced local spend as a partial estimate when an incomplete Pi or OMP mirror is included, across Usage & Spend, Overview, and sharing (#4052). Fixes #4051. Thanks @BUKOWSKIREAL!
 - Claude and Vertex: reuse unchanged decoded cost-history caches across refreshes while preserving source, pricing, and time-zone validation (#4053). Thanks @djbclark!
 - Costs: keep All history priority checks proportional to recorded days instead of generating centuries of empty days, while preserving older logs (#4045). Thanks @djbclark!
+- Pi: preserve the directory marker for session roots that do not exist yet (#4067). Thanks @Sogl!
 - CLI: macOS release builds compile again on the Xcode 26 release runners, so the 0.68 macOS CLI tarballs and the Homebrew `codexbar` formula ship alongside the app.
+- LongCat: move quota fetching to the bundled plugin on both engines, keeping imported cookies private to the host and preserving per-request cookie scope, profile fallback, and optional fuel-pack data.
+- Browser sessions: preserve distinct host-only and domain-scoped cookies when merging stores from the same profile.
 
 ## 0.68.0 — 2026-09-27
 
