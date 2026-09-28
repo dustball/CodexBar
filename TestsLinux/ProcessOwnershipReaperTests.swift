@@ -173,4 +173,19 @@ struct ProcessOwnershipReaperTests {
         empty.append(Data("/fixture\0\0fixture\0arg\0\0\(key)=apple-vector\0".utf8))
         #expect(DarwinProcessEnumerator.parseProcArgs2Environment(empty, names: names) == nil)
     }
+
+    @Test(arguments: [0, 64, 128])
+    func `marker parsing preserves boundaries around large unrelated values`(position: Int) {
+        let key = ProcessOwnershipReaper.environmentKey
+        let names: Set<String> = [key]
+        var records = (0..<128).map { "FIXTURE_\($0)=\(String(repeating: "x", count: 4096))" }
+        records.insert("\(key)=fixture", at: position)
+        let data = Data(("\0" + records.joined(separator: "\0\0") + "\0").utf8)
+
+        #expect(PiProcessEnvironment.parseNULSeparated(data, names: names) == [key: "fixture"])
+        #expect(PiProcessEnvironment.parseNULSeparated(data.dropLast(), names: names) == nil)
+        #expect(PiProcessEnvironment.parseNULSeparated(data + Data("malformed\0".utf8), names: names) == nil)
+        #expect(PiProcessEnvironment.parseNULSeparated(data + Data("\(key)=different\0".utf8), names: names) == nil)
+        #expect(PiProcessEnvironment.parseNULSeparated(Data(repeating: 0, count: data.count), names: names) == [:])
+    }
 }

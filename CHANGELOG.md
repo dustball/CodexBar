@@ -2,6 +2,9 @@
 
 ## 0.69.1 — Unreleased
 
+### Fixed
+
+- Mistral: price billing usage by event type, API zone, and service tier, so a per-second audio or priority price no longer inflates API spend and 30-day token cost (#4076). Thanks @T0mSIlver!
 ### Security
 
 - Redact every remaining stored process environment in the app, CLI, provider contexts, and session scanners, and guard against new unredacted environment properties with a repository check (#4106).
@@ -9,6 +12,7 @@
 ### Fixed
 
 - Codex: remember Gatekeeper verdicts for unchanged standalone CLI binaries, bound to the file actually assessed, instead of running `spctl --assess` on every lookup, which kept `syspolicyd` busy in proportion to the refresh cadence (#4078, #4080). Thanks @dustball!
+- CLI: keep probe timeout and cancellation cleanup responsive when other processes have large environments (#4077).
 
 ## 0.69.0 — 2026-09-28
 

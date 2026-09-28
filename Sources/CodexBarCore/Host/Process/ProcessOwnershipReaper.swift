@@ -22,7 +22,7 @@ struct ProcessOwnershipReaper: Sendable {
             let identities = self.ownedProcesses()
             if identities.isEmpty { return }
             for identity in identities {
-                self.signal(identity, SIGTERM)
+                Self.signal(identity, SIGTERM, owns: self.owns)
             }
             usleep(50000)
         } while Date() < deadline
@@ -30,7 +30,7 @@ struct ProcessOwnershipReaper: Sendable {
             self.signalGroup(processGroup, signal: SIGKILL)
         }
         for identity in self.ownedProcesses() {
-            self.signal(identity, SIGKILL)
+            Self.signal(identity, SIGKILL, owns: self.owns)
         }
     }
 
@@ -70,10 +70,6 @@ struct ProcessOwnershipReaper: Sendable {
         let environment = PiProcessEnvironment.readLinuxEnvironment(pid: pid, names: [Self.environmentKey])
         #endif
         return environment?[Self.environmentKey] == self.marker
-    }
-
-    private func signal(_ identity: TTYProcessTreeTerminator.ProcessIdentity, _ signal: Int32) {
-        Self.signal(identity, signal, owns: self.owns)
     }
 
     /// Revalidate at each signal, including escalation: a cached PID is never authority to kill.

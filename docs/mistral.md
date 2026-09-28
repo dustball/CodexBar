@@ -50,8 +50,11 @@ For the console request, CodexBar forwards only the `csrftoken` and `ory_session
 
 - **Included API** shows the subscription allowance's used percentage, used / total / remaining amount, and reset time.
 - The optional **Monthly Plan** window shows the separate Vibe Code allowance with the same details.
-- API spend is computed from billed units (`value_paid`, falling back to `value`) and the pricing table. Token totals
+- API spend is computed from billed units (`value_paid`, falling back to `value`) and the pricing table. Each unit takes
+  the price with the same event type, metric, group, API zone, and service tier; the table lists one metric under
+  several of these, and audio-second and priority prices are far higher than standard token prices. Token totals
   and daily buckets use consumed units (`value`, falling back to `value_paid`), so plan-covered usage still counts.
+  Legacy tables that omit both API zone and service tier use the unqualified price for the same event type, metric, and group.
 - Token totals include API completions, Le Chat, and Vibe Code completions from the billing usage response.
 - Daily usage buckets feed the inline usage dashboard.
 - The provider card can show credit balance when the credits endpoint returns it.

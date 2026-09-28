@@ -27,7 +27,11 @@ enum PiProcessEnvironment {
         else { return nil }
 
         var selected: [String: String] = [:]
-        for record in data.split(separator: 0) {
+        // Byte-range search avoids walking large unrelated values through Data's generic split iterator.
+        var remainder = data.drop(while: { $0 == 0 })
+        while let end = remainder.range(of: Data([0]))?.lowerBound {
+            let record = remainder[..<end]
+            remainder = remainder[remainder.index(after: end)...].drop(while: { $0 == 0 })
             guard let separator = record.firstIndex(of: 61) else { return nil }
             guard let name = String(bytes: record[..<separator], encoding: .utf8),
                   names.contains(name)
@@ -57,7 +61,7 @@ enum PiProcessEnvironment {
             var data = Data()
             while data.count <= self.maxEnvironmentBytes {
                 let remaining = self.maxEnvironmentBytes + 1 - data.count
-                let chunk = try file.read(upToCount: min(16384, remaining)) ?? Data()
+                let chunk = try file.read(upToCount: remaining) ?? Data()
                 if chunk.isEmpty { return self.parseNULSeparated(data, names: names) }
                 data.append(chunk)
             }
