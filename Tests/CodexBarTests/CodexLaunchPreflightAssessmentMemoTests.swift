@@ -238,16 +238,20 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         // spctl would have assessed `other`; by the time it returns the link names `original` again.
         _ = memo.assessment(path: link.path, isDefinitive: { _ in true }, assess: { _ in
             calls.increment()
-            swap(other)
-            swap(original)
+            if calls.count == 1 {
+                swap(other)
+                swap(original)
+            }
             return Assessment(output: Self.notAnApp, exitStatus: 3)
         })
-        _ = Self.assess(memo, link.path, calls: calls)
+        // The disturbed verdict was neither returned nor kept: the caller got a fresh assessment.
         #expect(calls.count == 2)
+        _ = Self.assess(memo, link.path, calls: calls)
+        #expect(calls.count == 3)
 
         // An undisturbed assessment is remembered as usual.
         _ = Self.assess(memo, link.path, calls: calls)
-        #expect(calls.count == 2)
+        #expect(calls.count == 3)
     }
 
     @Test
@@ -268,15 +272,18 @@ struct CodexLaunchPreflightAssessmentMemoTests {
 
         _ = memo.assessment(path: codex, isDefinitive: { _ in true }, assess: { _ in
             calls.increment()
-            try? manager.removeItem(at: current)
-            try? manager.createSymbolicLink(atPath: current.path, withDestinationPath: "release-2")
-            try? manager.removeItem(at: current)
-            try? manager.createSymbolicLink(atPath: current.path, withDestinationPath: "release-1")
+            if calls.count == 1 {
+                try? manager.removeItem(at: current)
+                try? manager.createSymbolicLink(atPath: current.path, withDestinationPath: "release-2")
+                try? manager.removeItem(at: current)
+                try? manager.createSymbolicLink(atPath: current.path, withDestinationPath: "release-1")
+            }
             return Assessment(output: Self.notAnApp, exitStatus: 3)
         })
+        #expect(calls.count == 2)
         _ = Self.assess(memo, codex, calls: calls)
 
-        #expect(calls.count == 2)
+        #expect(calls.count == 3)
     }
 
     @Test
@@ -327,6 +334,78 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         #expect(decide(4 + Memo.lifetime - 1))
         #expect(!decide(4 + Memo.lifetime))
         #expect(calls.count == 4)
+    }
+
+    private final class Decisions: @unchecked Sendable {
+        private let lock = NSLock()
+        private var values: [String: Bool] = [:]
+        subscript(name: String) -> Bool? {
+            get { self.lock.withLock { self.values[name] } }
+            set { self.lock.withLock { self.values[name] = newValue } }
+        }
+    }
+
+    @Test
+    func `no caller inherits a verdict for a target swapped during a shared assessment`() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let signed = try fixture.executable("codex-signed", contents: "signed release")
+        let unsigned = try fixture.executable("codex-unsigned", contents: "unsigned replacement")
+        let link = fixture.root.appendingPathComponent("codex")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: signed)
+        let started = DispatchSemaphore(value: 0)
+        let joined = DispatchSemaphore(value: 0)
+        let memo = Memo(onJoin: { joined.signal() })
+        let calls = Counter()
+        let decisions = Decisions()
+        let path = link.path
+
+        let decide: @Sendable () -> Bool = {
+            CodexLaunchPreflight.isLaunchCandidateAllowed(
+                path: path,
+                fileManager: .default,
+                hasExtendedAttribute: { _, _ in false },
+                spctlAssessment: { candidate in
+                    memo.assessment(
+                        path: candidate,
+                        isDefinitive: { CodexLaunchPreflight.isDefinitiveAssessment($0.output, path: candidate) },
+                        assess: { candidate in
+                            calls.increment()
+                            // Gatekeeper reads whatever the link names when the assessment starts.
+                            let isSigned = (try? String(contentsOfFile: candidate, encoding: .utf8)) == "signed release"
+                            if calls.count == 1 {
+                                started.signal()
+                                _ = joined.wait(timeout: .now() + 5)
+                                // Retarget to the forbidden binary while the shared assessment is running.
+                                try? FileManager.default.removeItem(at: link)
+                                try? FileManager.default.createSymbolicLink(at: link, withDestinationURL: unsigned)
+                            }
+                            let verdict = isSigned ? Self.notAnApp : "rejected\nsource=no usable signature"
+                            return Assessment(output: "\(candidate): \(verdict)", exitStatus: 3)
+                        })
+                },
+                appSignatureIsTrusted: { _ in false },
+                isMachOExecutable: { _ in true })
+        }
+
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global().async {
+            decisions["leader"] = decide()
+            group.leave()
+        }
+        _ = started.wait(timeout: .now() + 5)
+        group.enter()
+        DispatchQueue.global().async {
+            decisions["waiter"] = decide()
+            group.leave()
+        }
+        _ = group.wait(timeout: .now() + 10)
+
+        // Both lookups now name the unsigned binary, so neither may be allowed on the signed one's verdict.
+        #expect(decisions["leader"] == false)
+        #expect(decisions["waiter"] == false)
+        #expect(calls.count == 3)
     }
 
     @Test

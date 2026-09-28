@@ -12,21 +12,23 @@ extension CodexLaunchPreflight {
     /// a content write, `chmod`, or xattr change (quarantine included) always yields a new key. The key also
     /// records every symlink the path crosses, and a verdict is kept only when the key read after `spctl`
     /// returns matches the one read before, so a target swapped during the assessment (even one swapped
-    /// back) is never remembered. The lifetime bounds how long a certificate revoked in place can go
-    /// unnoticed.
+    /// back) is never remembered, and no caller (the one that ran `spctl` or one that waited on it) is
+    /// answered with a verdict for a file its path no longer names: it gets a fresh assessment instead. The
+    /// lifetime bounds how long a certificate revoked in place, with the file untouched, can go unnoticed.
     final class AssessmentMemo: @unchecked Sendable {
         static let shared = AssessmentMemo()
         static let capacity = 16
-        static let lifetime: TimeInterval = 60 * 60
+        static let lifetime: TimeInterval = 15 * 60
 
         /// Assessments are synchronous. Each pending key has its own result promise, so waiting callers
         /// share even a transient result without holding the dictionary lock or blocking unrelated keys.
+        /// `bound` records whether the path still named the assessed file when `spctl` returned.
         private final class Flight {
             private let condition = NSCondition()
             private var completed = false
-            private var result: GatekeeperAssessment?
+            private var result: (assessment: GatekeeperAssessment?, bound: Bool) = (nil, false)
 
-            func wait() -> GatekeeperAssessment? {
+            func wait() -> (assessment: GatekeeperAssessment?, bound: Bool) {
                 self.condition.lock()
                 defer { self.condition.unlock() }
                 while !self.completed {
@@ -35,9 +37,9 @@ extension CodexLaunchPreflight {
                 return self.result
             }
 
-            func complete(_ result: GatekeeperAssessment?) {
+            func complete(_ assessment: GatekeeperAssessment?, bound: Bool) {
                 self.condition.lock()
-                self.result = result
+                self.result = (assessment, bound)
                 self.completed = true
                 self.condition.broadcast()
                 self.condition.unlock()
@@ -56,7 +58,8 @@ extension CodexLaunchPreflight {
         /// Returns the remembered verdict for an unchanged regular file, or runs `assess`. Only verdicts
         /// `isDefinitive` accepts are kept, and only when the path resolved to the same file through the same
         /// symlinks before and after the assessment; timeouts, launch failures, and `spctl` errors stay
-        /// retryable. Directories (app bundles) are never memoized.
+        /// retryable. A verdict is only ever returned for the file the path names when the call returns;
+        /// otherwise the caller gets a fresh, unshared assessment. Directories (app bundles) are never memoized.
         func assessment(
             path: String,
             now: TimeInterval = ProcessInfo.processInfo.systemUptime,
@@ -72,7 +75,10 @@ extension CodexLaunchPreflight {
             if let flight = self.flights[key] {
                 self.lock.unlock()
                 self.onJoin()
-                return flight.wait()
+                let shared = flight.wait()
+                // The leader's verdict speaks for the file it assessed; revalidate it for this caller.
+                if shared.bound, AssessmentKey(path: path) == key { return shared.assessment }
+                return assess(path)
             }
             let flight = Flight()
             self.flights[key] = flight
@@ -80,10 +86,10 @@ extension CodexLaunchPreflight {
 
             let result = assess(path)
             // Bind the verdict to what was assessed: anything that moved while `spctl` ran is not remembered.
-            let unchanged = AssessmentKey(path: path) == key
+            let bound = AssessmentKey(path: path) == key
             self.lock.withLock {
                 self.entries = self.entries.filter { now < $0.value.expiresAt }
-                if let result, unchanged, isDefinitive(result) {
+                if let result, bound, isDefinitive(result) {
                     if self.entries.count >= Self.capacity,
                        let firstToExpire = self.entries.min(by: { $0.value.expiresAt < $1.value.expiresAt })?.key
                     {
@@ -91,10 +97,11 @@ extension CodexLaunchPreflight {
                     }
                     self.entries[key] = (result, now + Self.lifetime)
                 }
-                flight.complete(result)
+                flight.complete(result, bound: bound)
                 self.flights.removeValue(forKey: key)
             }
-            return result
+            // A verdict for a file the path no longer names is not an answer for this lookup either.
+            return bound ? result : assess(path)
         }
     }
 
