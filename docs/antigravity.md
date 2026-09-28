@@ -41,6 +41,12 @@ or later before using print mode; [Google introduced non-interactive usage repor
 It requires a successful `usage` command report with known,
 enabled quota buckets, bounds the command to 90 seconds and its output to 1 MiB, and terminates the command
 on cancellation. It runs in a private empty directory and does not send a model prompt or parse TUI output.
+Each print probe receives a fresh `CODEXBAR_PROBE_OWNER` environment marker. On completion, timeout, or
+cancellation, CodexBar stops its process group and reaps same-user processes that still carry that exact marker,
+including detached MCP servers. Ownership and process start identity are checked again before each signal;
+unreadable environments are skipped. Cleanup never selects a process by name, executable, or working directory.
+Children that deliberately discard the inherited environment cannot be identified by this safety net. The installed
+`agy` 1.2.11 `--help` offers MCP configuration commands but no per-probe switch to disable MCP startup.
 The report contains no account or plan identity: explicit CLI mode remains authoritative, while Auto uses
 this fallback only without a selected token account or explicitly injected OAuth credentials. Successful
 HTTPS results retain their verified identity. Failed command diagnostics do not include raw stderr.

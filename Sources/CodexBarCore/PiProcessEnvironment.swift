@@ -18,7 +18,10 @@ enum PiProcessEnvironment {
         }
     }
 
-    static func parseNULSeparated(_ data: Data) -> [String: String]? {
+    static func parseNULSeparated(
+        _ data: Data,
+        names: Set<String> = Self.selectorNames) -> [String: String]?
+    {
         guard data.count <= self.maxEnvironmentBytes,
               data.isEmpty || data.last == 0
         else { return nil }
@@ -27,7 +30,7 @@ enum PiProcessEnvironment {
         for record in data.split(separator: 0) {
             guard let separator = record.firstIndex(of: 61) else { return nil }
             guard let name = String(bytes: record[..<separator], encoding: .utf8),
-                  self.selectorNames.contains(name)
+                  names.contains(name)
             else { continue }
             let valueStart = record.index(after: separator)
             guard let value = String(bytes: record[valueStart...], encoding: .utf8) else { return nil }
@@ -40,7 +43,8 @@ enum PiProcessEnvironment {
 
     static func readLinuxEnvironment(
         pid: Int32,
-        procRoot: URL = URL(fileURLWithPath: "/proc", isDirectory: true)) -> [String: String]?
+        procRoot: URL = URL(fileURLWithPath: "/proc", isDirectory: true),
+        names: Set<String> = Self.selectorNames) -> [String: String]?
     {
         guard pid > 0 else { return nil }
         let url = procRoot
@@ -54,7 +58,7 @@ enum PiProcessEnvironment {
             while data.count <= self.maxEnvironmentBytes {
                 let remaining = self.maxEnvironmentBytes + 1 - data.count
                 let chunk = try file.read(upToCount: min(16384, remaining)) ?? Data()
-                if chunk.isEmpty { return self.parseNULSeparated(data) }
+                if chunk.isEmpty { return self.parseNULSeparated(data, names: names) }
                 data.append(chunk)
             }
         } catch {
