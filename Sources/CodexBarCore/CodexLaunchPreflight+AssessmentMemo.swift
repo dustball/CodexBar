@@ -21,7 +21,7 @@ extension CodexLaunchPreflight {
     final class AssessmentMemo: @unchecked Sendable {
         static let shared = AssessmentMemo()
         static let capacity = 16
-        static let lifetime: TimeInterval = 15 * 60
+        static let lifetime: TimeInterval = 5 * 60
 
         /// Assessments are synchronous. Each pending file has its own result promise, so waiting callers
         /// share even a transient result without holding the dictionary lock or blocking unrelated files.

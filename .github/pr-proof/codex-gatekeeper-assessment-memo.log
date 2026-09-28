@@ -1,0 +1,45 @@
+CodexBar Codex launch preflight: Gatekeeper assessment memo, native proof (#4078)
+Verified 2026-09-27 on macOS 15.7.7 (24G720), Intel Core i7-4790K, x86_64.
+Codex CLI 0.145.0 standalone: ~/.local/bin/codex -> ~/.codex/packages/standalone/current/bin/codex
+(Developer ID Application: OpenAI OpCo, LLC (2DC432GLL2), 281 MB x86_64, no quarantine xattr).
+Private paths are shown relative to ~.
+
+Cost of one assessment (spctl --assess --type execute --verbose=4, back to back, syspolicyd otherwise idle):
+  run 1  11.5 s wall  4.9 s syspolicyd CPU  rejected (the code is valid but does not seem to be an app)
+  run 2   2.7 s wall  2.6 s syspolicyd CPU  same verdict
+  run 3   2.6 s wall  2.5 s syspolicyd CPU  same verdict
+The same verdicts come back for /.vol/<device>/<inode> as for the path, for both the Developer ID codex
+and an ad-hoc signed CLI ("rejected" / "source=no usable signature").
+
+Before (official 0.57.0; unified log, process == "spctl", all parented by CodexBar):
+  16:50-17:10  5 refreshes   10 spctl runs, a pair on every 5-minute refresh (~1.7% of a core)
+  17:00-18:00  elevated lookup cadence, a pair every ~12 s: 494 spctl runs; syspolicyd 16.5 s CPU
+               per 30 s (~55% of a core). Quitting CodexBar: 0.00 s per 30 s.
+
+After (this PR, packaged 0.68.1 build 160, launched with CODEX_CLI_PATH unset):
+  20:31:26, 20:31:31, 20:36:30  cold start: assessment > the existing 5 s spctl timeout, terminated,
+                                not remembered (unchanged behaviour)
+  20:36:35                      completed in 2.64 s, remembered
+  20:41:30, 20:46:31 refreshes  codex launched, 0 spctl runs
+
+Production-path harness: a throwaway local executable calling the public
+CodexLaunchPreflight.isLaunchCandidateAllowed(path:) with the real spctl, on a symlink retargeted
+between the Developer ID codex and an ad-hoc signed CLI.
+
+  codex (Developer ID), lookup 1           ALLOWED    2580 ms   spctl on /.vol/<dev>/<inode>, remembered
+  codex, lookup 2                          ALLOWED       0 ms   memo
+  codex, lookup 3                          ALLOWED       0 ms   memo
+  link retargeted to ad-hoc binary         BLOCKED      76 ms   a different file, its own assessment
+  ad-hoc binary, lookup 2                  BLOCKED       0 ms   memo
+  link retargeted back to codex            ALLOWED       0 ms   the same file as lookup 1, its verdict
+  codex, lookup 5                          ALLOWED       0 ms   memo
+
+Shared in-flight assessment (fresh process): the leader starts spctl on codex, a second lookup joins at
+300 ms, and the link is retargeted to the ad-hoc binary at 1004 ms.
+
+  leader (starts spctl on codex)           BLOCKED  returned at 2637 ms
+  waiter (joins the same assessment)       BLOCKED  returned at 2637 ms
+
+Unified log for that phase: one spctl on codex (2.47 s), then two short spctl runs on the ad-hoc binary,
+one fresh assessment per caller. Neither caller was answered with the verdict for the file its path no
+longer named.
