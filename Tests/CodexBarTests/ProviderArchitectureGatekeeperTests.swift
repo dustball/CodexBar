@@ -3519,11 +3519,11 @@ struct ProviderArchitectureGatekeeperTests {
         AllowedProviderConstruct(
             path: "Sources/CodexBarCore/PathEnvironment.swift",
             occurrence: 1,
-            anchor: ".appendingPathComponent(\"codex\")",
+            anchor: #"let legacyDirectory = "codex""#,
             expectedProviderIDs: ["codex"],
-            expectedReferenceCount: 2,
-            expectedReferenceFingerprint: ["codex@0", "codex@1"],
-            reason: "This exact binary locator follows the npm Codex package's fixed nested executable path."),
+            expectedReferenceCount: 1,
+            expectedReferenceFingerprint: ["codex@0"],
+            reason: "This exact binary locator recognizes current and legacy npm Codex payload directories."),
         AllowedProviderConstruct(
             path: "Sources/CodexBarCore/ProviderStorageFootprint.swift",
             occurrence: 2,

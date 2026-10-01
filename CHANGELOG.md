@@ -11,6 +11,7 @@
 
 ### Changed
 
+- Reduce CPU use when importing browser sessions for Devin, MiniMax, and Windsurf.
 - Docs: link the community codexbar-kde Plasma widget for Linux usage meters and agent-session views (#4117). Thanks @materemias!
 ### Added
 
@@ -18,7 +19,11 @@
 
 ### Fixed
 
+- Codex: discover the current ChatGPT bundled CLI launcher and skip npm launchers with missing native payloads or unsafe Node discovery environments so managed login can use a working fallback (#4143). Thanks @Yuxin-Qiao!
 - iCloud Sync: prevent cancelled or superseded sync applies and removed-record recovery from overwriting provider settings, preferences, fleet records, or newer sync metadata (#4161).
+- Reduce CPU use during Keychain preflight by validating the running app's code identity without rehashing its resources.
+- Costs: reduce CPU use when saving Claude and Vertex history after local transcripts change.
+
 - Claude: retain an established CLI source after transient timeouts and loading stalls so Auto refreshes can retry without an unrelated missing-OAuth-credentials warning (#4129).
 - Claude: exclude usage-insights tool names and percentages from quota and account parsing (#4083).
 - Claude: keep configured MCP servers out of the direct `/usage` fallback (#4112). Thanks @sudoHG!

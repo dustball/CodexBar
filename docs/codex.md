@@ -183,7 +183,20 @@ and stable account numbers distinguish rows while usable workspace labels remain
 - If macOS blocks or quarantines the `codex` executable, CodexBar records the launch failure and skips background CLI
   launches for 30 minutes. Use a manual refresh after reinstalling or unblocking `codex` to retry immediately.
 - CodexBar also discovers the Codex CLI bundled with current ChatGPT and legacy Codex desktop apps, even when `codex`
-  is absent from the shell PATH.
+  is absent from the shell PATH. Discovery includes the current `codex-cli/bin/codex` launcher and skips known
+  npm launchers whose selected native payload is unavailable, with a diagnostic to reinstall `@openai/codex`.
+  The launcher's Node interpreter resolves the architecture and optional package location without evaluating `codex.js`;
+  the recognized current `bin/codex` or legacy `codex/codex` layout selects the one payload to assess. Transitional
+  launchers such as Codex 0.136 fall back to the legacy path only when the current path is absent, matching npm.
+  Stale payloads cannot substitute for an existing but unusable selected binary, or a current-only launcher's missing
+  binary. Other architectures cannot substitute either. Unknown layouts fail closed. RPC and PTY discovery
+  preserve locator rejection instead of repeating an unfiltered `which` lookup. PTY discovery and status diagnostics
+  use the caller's environment for preflight, so a rejected Node runtime cannot be rediscovered under the host environment.
+  Healthy npm launchers retain
+  PATH precedence; bundled fallbacks still require the existing app trust checks.
+  Runtime inspection uses the shared executable finder, ignoring relative and empty PATH entries while retaining absolute
+  install paths. Nonempty `NODE_OPTIONS` still prevents inspection, so discovery cannot run a working-directory interpreter
+  or preload hook before assessing the payload; bundled fallbacks remain available.
 - If managed Codex account login still reports a missing executable, turn on **Show debug settings** in
   **Settings > Advanced**, then check **Settings > Debug > CLI Paths**. When no Codex binary appears there, confirm
   `codex --version` works in Terminal, check `which -a codex` for stale duplicate installs, then run

@@ -470,7 +470,8 @@ public struct TTYCommandRunner {
         options: Options = Options(),
         onURLDetected: (@Sendable () -> Void)? = nil) throws -> Result
     {
-        guard let resolved = Self.which(binary) else {
+        let baseEnv = options.baseEnvironment ?? ProcessInfo.processInfo.environment
+        guard let resolved = Self.which(binary, environment: baseEnv) else {
             Self.log.warning("PTY binary not found", metadata: ["binary": binary])
             throw Error.binaryNotFound(binary)
         }
@@ -536,7 +537,6 @@ public struct TTYCommandRunner {
             }
         }
 
-        let baseEnv = options.baseEnvironment ?? ProcessInfo.processInfo.environment
         let ttyLaunch = Self.providerTTYLaunch(requested: binary, resolved: resolved, environment: baseEnv)
         let executable: String
         let arguments: [String]
@@ -1117,17 +1117,26 @@ extension TTYCommandRunner {
         try TTYCommandRunnerTestingOverrides.$outputLimitBytes.withValue(maxBytes, operation: operation)
     }
 
-    public static func which(_ tool: String) -> String? {
+    public static func which(
+        _ tool: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> String?
+    {
         if tool.contains("/") {
             return BinaryLocator.find(tool, in: [], fileManager: .default)
         }
         if let cli = ProviderDescriptorRegistry.all.first(where: { $0.cli.name == tool })?.cli,
-           cli.prefersBinaryLocatorForWhich,
-           let located = cli.binaryLocator?()
+           cli.prefersBinaryLocatorForWhich
         {
-            return URL(fileURLWithPath: located).standardizedFileURL.path
+            // The provider locator owns fallback discovery and launch preflight.
+            // Do not undo a rejection with an unfiltered system lookup.
+            return cli.binaryLocator?(environment).map { URL(fileURLWithPath: $0).standardizedFileURL.path }
         }
-        return self.runWhich(tool)
+        let loginPATH = LoginShellPathCache.shared.currentOrCapture(shell: environment["SHELL"])
+        let path = PathBuilder.effectivePATH(
+            purposes: [.tty, .nodeTooling],
+            env: environment,
+            loginPATH: loginPATH)
+        return BinaryLocator.find(tool, in: path.split(separator: ":").map(String.init), fileManager: .default)
     }
 
     private static func providerTTYLaunch(
@@ -1165,14 +1174,6 @@ extension TTYCommandRunner {
             }
         }
         return URL(fileURLWithPath: expanded).standardizedFileURL.path
-    }
-
-    private static func runWhich(_ tool: String) -> String? {
-        let loginPATH = LoginShellPathCache.shared.currentOrCapture()
-        let path = PathBuilder.effectivePATH(
-            purposes: [.tty, .nodeTooling],
-            loginPATH: loginPATH)
-        return BinaryLocator.find(tool, in: path.split(separator: ":").map(String.init), fileManager: .default)
     }
 
     /// Uses login-shell PATH when available so TTY probes match the user's shell configuration.
