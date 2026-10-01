@@ -10,7 +10,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-6e5aff?style=flat-square)](LICENSE)
 [![Site](https://img.shields.io/badge/site-codexbar.app-16d3b4?style=flat-square)](https://codexbar.app)
 
-<a href="https://codexbar.app"><img src="docs/social.png?v=dd6ec2d887455441" alt="CodexBar — every AI coding limit in your menu bar. 87 providers." width="100%" /></a>
+<a href="https://codexbar.app"><img src="docs/social.png?v=6c28517cfe05c9db" alt="CodexBar — every AI coding limit in your menu bar. 87 providers." width="100%" /></a>
 
 Tiny macOS 14+ menu bar app that keeps **AI coding-provider limits visible** and shows when each window resets. See the [supported providers](#providers) below. One status item per provider, or Merge Icons mode with a provider switcher. No Dock icon, minimal UI, dynamic bar icons.
 
@@ -190,6 +190,7 @@ show an incident indicator.
 - Provider-specific usage meters with reset countdowns.
 - Optional Codex web dashboard enrichments (code review remaining, usage breakdown, credits history).
 - Inline spend and usage charts for API-backed providers such as OpenAI, Claude Admin API, OpenRouter, LiteLLM, z.ai, MiniMax, Mistral, and AWS Bedrock.
+- Codex and Claude Plan Usage menus show a quota burndown from recorded snapshots, with the capture time and an even-use guide. The existing utilization history remains below it, and the line fills in as the app collects samples.
 - Configurable cost-usage scans for Codex + Claude, plus reused chart UI for supported provider histories. Codex history uses a WAL-enabled SQLite store capped at 25,000 retained session entries and 256 MiB.
 - A persistent Settings → Usage & Spend view for local estimates, grouped by native currency and provider. Each provider shows its accounts or history sources alongside its model breakdown; project/session views and daily/hourly trends share compact selectors. Incomplete history stays labeled, and source, privacy, export, and sharing controls remain available.
 - Provider status polling with incident badges in the menu and icon overlay.
@@ -286,6 +287,7 @@ CLI install:
 - [KodexBar](https://github.com/tylxr59/KodexBar) — KDE Plasma widget that shows CodexBar usage in the Plasma panel, built on top of the bundled Linux CLI.
 - [codexbar-plasmoid](https://github.com/psimaker/codexbar-plasmoid) — KDE Plasma 6 widget for CodexBar's meter icon, provider switcher, quota windows, pace, credits, local cost, and status, powered by the bundled Linux CLI.
 - [CodexBar Plasma](https://github.com/Lucenx9/codexbar-plasma) — KDE Plasma 6 widget with multi-provider views, account selection, cost history, notifications, configurable providers, and installable `.plasmoid` releases, powered by the bundled Linux CLI.
+- [codexbar-kde](https://github.com/materemias/codexbar-kde) — KDE Plasma 6 widget with usage meters, agent-session search, terminal focus, and kitty session restoration, powered by the bundled Linux CLI.
 - [CodexBar Meter](https://github.com/noctalia-dev/community-plugins/tree/main/codexbar-meter) — Noctalia v5 bar widget and panel showing every enabled provider's quota windows, credits, and pace, installable from Noctalia's plugin store, built on the bundled Linux CLI.
 
 ## Desk display

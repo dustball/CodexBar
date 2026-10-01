@@ -38,6 +38,16 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         func remove() { try? FileManager.default.removeItem(at: self.root) }
     }
 
+    /// Keep the contributor's filesystem/race tests synthetic; real signature coverage is separate.
+    private static func memo(
+        onJoin: @escaping @Sendable () -> Void = {},
+        onCacheHit: @escaping @Sendable () -> Void = {}) -> Memo
+    {
+        Memo(onJoin: onJoin, onCacheHit: onCacheHit, readSignature: { _ in
+            .init(digest: Data("synthetic signature".utf8))
+        })
+    }
+
     private static func assess(
         _ memo: Memo,
         _ path: String,
@@ -60,7 +70,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let codex = try fixture.executable("codex")
-        let memo = Memo()
+        let memo = Self.memo()
         let calls = Counter()
 
         for _ in 0..<100 {
@@ -76,7 +86,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let codex = try fixture.executable("codex")
-        let memo = Memo()
+        let memo = Self.memo()
         let calls = Counter()
         _ = Self.assess(memo, codex.path, calls: calls)
 
@@ -91,7 +101,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let codex = try fixture.executable("codex")
-        let memo = Memo()
+        let memo = Self.memo()
         let calls = Counter()
         let modifiedBefore = try FileManager.default.attributesOfItem(atPath: codex.path)[.modificationDate] as? Date
         _ = Self.assess(memo, codex.path, calls: calls)
@@ -115,7 +125,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         let new = try fixture.executable("codex-0.2", contents: "new release")
         let link = fixture.root.appendingPathComponent("codex")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: old)
-        let memo = Memo()
+        let memo = Self.memo()
         let calls = Counter()
         _ = Self.assess(memo, link.path, calls: calls)
 
@@ -131,7 +141,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let codex = try fixture.executable("codex")
-        let memo = Memo()
+        let memo = Self.memo()
         let calls = Counter()
 
         _ = Self.assess(memo, codex.path, now: 0, calls: calls)
@@ -147,7 +157,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let codex = try fixture.executable("codex")
-        let memo = Memo()
+        let memo = Self.memo()
         let timeouts = Counter()
         let errors = Counter()
 
@@ -166,7 +176,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         defer { fixture.remove() }
         let bundle = fixture.root.appendingPathComponent("Codex.app")
         try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
-        let memo = Memo()
+        let memo = Self.memo()
         let calls = Counter()
 
         for _ in 0..<3 {
@@ -182,7 +192,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         defer { fixture.remove() }
         let codex = try fixture.executable("codex")
         let joins = Counter()
-        let memo = Memo(onJoin: { joins.increment() })
+        let memo = Self.memo(onJoin: { joins.increment() })
         let calls = Counter()
         let path = codex.path
 
@@ -206,7 +216,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
     func `capacity evicts the verdict closest to expiry`() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let memo = Memo()
+        let memo = Self.memo()
         let calls = Counter()
         let paths = try (0...Memo.capacity).map { try fixture.executable("codex-\($0)").path }
 
@@ -259,7 +269,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         let signed = try fixture.executable("codex-signed", contents: "signed release")
         let link = fixture.root.appendingPathComponent("codex")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: unsigned)
-        let memo = Memo()
+        let memo = Self.memo()
         let calls = Counter()
         let swap = { (destination: URL) in
             try? FileManager.default.removeItem(at: link)
@@ -292,7 +302,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         let current = fixture.root.appendingPathComponent("current")
         try manager.createSymbolicLink(atPath: current.path, withDestinationPath: "release-1")
         let codex = current.appendingPathComponent("bin/codex").path
-        let memo = Memo()
+        let memo = Self.memo()
         let calls = Counter()
 
         #expect(!Self.decide(memo, codex, calls: calls, during: { call in
@@ -320,7 +330,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         let signed = fixture.root.appendingPathComponent("signed")
         let aside = fixture.root.appendingPathComponent("tool-aside")
         let codex = tool.appendingPathComponent("bin/codex").path
-        let memo = Memo()
+        let memo = Self.memo()
         let calls = Counter()
 
         // The unsigned tool is moved aside, the signed one takes its pathname while spctl runs, and the
@@ -347,7 +357,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: signed)
         let armed = Counter()
         // Fires after the remembered entry is found and before it is returned: the narrowest cache-hit window.
-        let memo = Memo(onCacheHit: {
+        let memo = Self.memo(onCacheHit: {
             guard armed.count == 1 else { return }
             try? FileManager.default.removeItem(at: link)
             try? FileManager.default.createSymbolicLink(at: link, withDestinationURL: unsigned)
@@ -369,7 +379,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let codex = try fixture.executable("codex")
-        let memo = Memo()
+        let memo = Self.memo()
         var assessedPaths: [String] = []
         let first = memo.assessment(path: codex.path, isDefinitive: { _ in true }, assess: { assessed in
             assessedPaths.append(assessed)
@@ -388,7 +398,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let codex = try fixture.executable("codex", contents: "signed release")
-        let memo = Memo()
+        let memo = Self.memo()
         let calls = Counter()
         var revoked = false
         let decide = { (now: TimeInterval) -> Bool in
@@ -452,7 +462,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: signed)
         let started = DispatchSemaphore(value: 0)
         let joined = DispatchSemaphore(value: 0)
-        let memo = Memo(onJoin: { joined.signal() })
+        let memo = Self.memo(onJoin: { joined.signal() })
         let calls = Counter()
         let decisions = Decisions()
         let path = link.path

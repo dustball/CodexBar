@@ -9,6 +9,10 @@ read_when:
 
 # Codex provider
 
+The **Plan Usage** submenu includes recorded remaining-quota burndown above utilization history,
+including saved Monthly windows. See [recorded quota burndown](widgets/burndown-proof.md)
+for capture-age semantics and the existing history retention/privacy behavior.
+
 Codex has three automatic usage data paths (OAuth API, web dashboard, CLI RPC) plus a manual CLI PTY diagnostic parser and a local cost-usage scanner.
 The OAuth API is the default app source when credentials are available; web access is optional for dashboard extras.
 
@@ -157,6 +161,9 @@ and stable account numbers distinguish rows while usable workspace labels remain
 
 ### Codex CLI RPC (automatic CLI source)
 - Launches local RPC server: `codex -s read-only -a never app-server`.
+- On macOS, standalone hardened-runtime CLI Gatekeeper verdicts are reused for at most five minutes while stat
+  metadata and every architecture’s complete embedded signature remain unchanged. Page-protection opt-outs,
+  unsigned or malformed files, and app bundles use fresh assessments. Malware/quarantine checks run per lookup.
 - JSON-RPC over stdin/stdout:
   - `initialize` (client name/version)
   - `account/read`
@@ -236,6 +243,8 @@ the local result and returns a nonzero exit code. See [CLI host reporting](cli.m
     - `~/.pi/agent/sessions/**/*.jsonl`
     - `~/.omp/agent/sessions/**/*.jsonl`
 - Scanner:
+  - Published model aliases resolve through the existing pricing canonicalizer. GPT-5.6 Sol estimates use the
+    rates applicable before or after August 21, 2026; see [model pricing](model-pricing.md).
   - Codex reserve telemetry uses the bundled GPT-5.6 Luna list-price estimate, including existing cached token rows.
     This estimates API-equivalent cost; it is not a charge for using a subscription reserve allowance.
   - Bundled `gpt-6-astra` pricing covers input, cache reads/writes, output, and the full-request long-context

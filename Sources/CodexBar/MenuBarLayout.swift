@@ -7,6 +7,26 @@ enum PercentWindow: String, CaseIterable, Codable, Hashable, Sendable {
     case scopedWeekly
     case automatic
 
+    /// Shared by the simplified picker and legacy layout migration.
+    static func forMetric(
+        _ metric: ProviderMenuBarMetric,
+        primarySemanticWindow: ProviderSemanticWindow,
+        secondarySemanticWindow: ProviderSemanticWindow) -> Self
+    {
+        switch metric {
+        case .primary: self.forSemanticWindow(primarySemanticWindow)
+        case .secondary: self.forSemanticWindow(secondarySemanticWindow)
+        case .automatic, .primaryAndSecondary, .tertiary, .extraUsage, .average, .monthlyPlan: .automatic
+        }
+    }
+
+    static func forSemanticWindow(_ window: ProviderSemanticWindow) -> Self {
+        switch window {
+        case .session: .session
+        case .weekly: .weekly
+        }
+    }
+
     func providerLabel(provider: UsageProvider?) -> String? {
         guard let provider else { return nil }
         let presentation = ProviderDescriptorRegistry.descriptor(for: provider).presentation
@@ -913,23 +933,12 @@ extension MenuBarLayout {
         provider: UsageProvider?)
         -> PercentWindow
     {
-        switch preference {
-        case .primary:
-            self.percentWindow(
-                ProviderDescriptorRegistry.descriptor(for: provider ?? .codex).presentation.primarySemanticWindow)
-        case .secondary:
-            self.percentWindow(
-                ProviderDescriptorRegistry.descriptor(for: provider ?? .codex).presentation.secondarySemanticWindow)
-        case .automatic, .primaryAndSecondary, .tertiary, .extraUsage, .average, .monthlyPlan:
-            .automatic
-        }
-    }
-
-    private static func percentWindow(_ window: ProviderSemanticWindow) -> PercentWindow {
-        switch window {
-        case .session: .session
-        case .weekly: .weekly
-        }
+        guard preference == .primary || preference == .secondary else { return .automatic }
+        let presentation = ProviderDescriptorRegistry.descriptor(for: provider ?? .codex).presentation
+        return PercentWindow.forMetric(
+            preference.providerMetric,
+            primarySemanticWindow: presentation.primarySemanticWindow,
+            secondarySemanticWindow: presentation.secondarySemanticWindow)
     }
 
     static func legacyPercentWindow(for lane: MenuBarLayoutLane, provider: UsageProvider?) -> PercentWindow {

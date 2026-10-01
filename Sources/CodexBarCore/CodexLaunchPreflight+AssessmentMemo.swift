@@ -10,10 +10,12 @@ extension CodexLaunchPreflight {
     ///
     /// A verdict is bound to a file, not to a path. The memo resolves the candidate to its device and inode
     /// and has Gatekeeper assess `/.vol/<device>/<inode>`, which names that file directly, so no symlink or
-    /// directory swapped while `spctl` runs can change what was assessed. A single-file executable carries its
-    /// own signature, so unlike an app bundle (see `KeychainAccessPreflight.ValidationMemo`) its identity
-    /// covers everything the assessment read: device, inode, size, mtime and ctime. User space cannot set
-    /// ctime, so a content write, `chmod`, or xattr change (quarantine included) is always a new identity.
+    /// directory swapped while `spctl` runs can change what was assessed. The key includes stat metadata and
+    /// a hash of every embedded signature; unsigned files and app bundles are never memoized.
+    /// Mapped writes can leave stat unchanged: changing any signature byte invalidates the key. Only hardened
+    /// runtime code without a page-protection opt-out is eligible (Apple TN3126). The kernel validates signed
+    /// pages at page-in; quarantine/xattr changes invalidate via ctime. The remaining check-then-exec race also exists
+    /// without the memo.
     /// A verdict is kept only if the file's identity is unchanged when `spctl` returns, and a caller receives
     /// it only while its own path still names that file; otherwise the caller gets a fresh, unshared
     /// assessment of its path. The lifetime bounds how long a certificate revoked in place, with the file
@@ -54,10 +56,20 @@ extension CodexLaunchPreflight {
         private var flights: [FileIdentity: Flight] = [:]
         private let onJoin: @Sendable () -> Void
         private let onCacheHit: @Sendable () -> Void
+        private let readSignature: @Sendable (String) -> SignatureIdentity?
 
-        init(onJoin: @escaping @Sendable () -> Void = {}, onCacheHit: @escaping @Sendable () -> Void = {}) {
+        init(
+            onJoin: @escaping @Sendable () -> Void = {},
+            onCacheHit: @escaping @Sendable () -> Void = {},
+            readSignature: @escaping @Sendable (String) -> SignatureIdentity? = SignatureIdentity.read)
+        {
             self.onJoin = onJoin
             self.onCacheHit = onCacheHit
+            self.readSignature = readSignature
+        }
+
+        private func identity(_ path: String) -> FileIdentity? {
+            FileIdentity(path: path, readSignature: self.readSignature)
         }
 
         /// Returns the remembered verdict for the unchanged regular file `path` names, or assesses it. Only
@@ -69,20 +81,19 @@ extension CodexLaunchPreflight {
             isDefinitive: (GatekeeperAssessment) -> Bool,
             assess: (String) -> GatekeeperAssessment?) -> GatekeeperAssessment?
         {
-            guard let file = FileIdentity(path: path), file.isRegularFile,
-                  FileIdentity(path: file.volumePath) == file
+            guard let file = self.identity(path), self.identity(file.volumePath) == file
             else { return assess(path) }
             self.lock.lock()
             if let entry = self.entries[file], now < entry.expiresAt {
                 self.lock.unlock()
                 self.onCacheHit()
-                return Self.deliver(entry.assessment, bound: true, file: file, path: path, assess: assess)
+                return self.deliver(entry.assessment, bound: true, file: file, path: path, assess: assess)
             }
             if let flight = self.flights[file] {
                 self.lock.unlock()
                 self.onJoin()
                 let shared = flight.wait()
-                return Self.deliver(shared.assessment, bound: shared.bound, file: file, path: path, assess: assess)
+                return self.deliver(shared.assessment, bound: shared.bound, file: file, path: path, assess: assess)
             }
             let flight = Flight()
             self.flights[file] = flight
@@ -90,7 +101,7 @@ extension CodexLaunchPreflight {
 
             let result = assess(file.volumePath)
             // Kept only if the file did not change while `spctl` read it.
-            let bound = FileIdentity(path: file.volumePath) == file
+            let bound = self.identity(file.volumePath) == file
             self.lock.withLock {
                 self.entries = self.entries.filter { now < $0.value.expiresAt }
                 if let result, bound, let reported = Self.attributed(result, from: file.volumePath, to: path),
@@ -106,21 +117,21 @@ extension CodexLaunchPreflight {
                 flight.complete(result, bound: bound)
                 self.flights.removeValue(forKey: file)
             }
-            return Self.deliver(result, bound: bound, file: file, path: path, assess: assess)
+            return self.deliver(result, bound: bound, file: file, path: path, assess: assess)
         }
 
         /// Every answer (cache hit, shared, or fresh) is checked against what the caller's path names
         /// immediately before it is returned. A verdict for a file the path no longer names is not an answer
         /// for this lookup, so the caller gets a fresh, unshared assessment of its path instead.
-        private static func deliver(
+        private func deliver(
             _ assessment: GatekeeperAssessment?,
             bound: Bool,
             file: FileIdentity,
             path: String,
             assess: (String) -> GatekeeperAssessment?) -> GatekeeperAssessment?
         {
-            guard bound, FileIdentity(path: path) == file else { return assess(path) }
-            return self.attributed(assessment, from: file.volumePath, to: path)
+            guard bound, self.identity(path) == file else { return assess(path) }
+            return Self.attributed(assessment, from: file.volumePath, to: path)
         }
 
         /// `spctl` names the path it was given at the start of its first line; report the caller's path.
@@ -146,9 +157,7 @@ extension CodexLaunchPreflight {
         let changedSeconds: Int
         let changedNanoseconds: Int
 
-        var isRegularFile: Bool {
-            self.mode & S_IFMT == S_IFREG
-        }
+        let signature: SignatureIdentity
 
         /// Names this file without traversing any directory or symlink.
         var volumePath: String {
@@ -156,9 +165,11 @@ extension CodexLaunchPreflight {
         }
 
         /// `stat`, so a symlinked candidate resolves to the file it names right now.
-        init?(path: String) {
+        init?(path: String, readSignature: (String) -> SignatureIdentity?) {
             var info = stat()
-            guard stat(path, &info) == 0 else { return nil }
+            guard stat(path, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
+                  let signature = readSignature(path) else { return nil }
+            self.signature = signature
             self.mode = info.st_mode
             self.device = info.st_dev
             self.inode = info.st_ino

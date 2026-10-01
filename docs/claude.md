@@ -9,6 +9,10 @@ read_when:
 
 # Claude provider
 
+The **Plan Usage** submenu includes recorded remaining-quota burndown above utilization history,
+using the same Session, Weekly, and Sonnet labels. See [recorded quota burndown](widgets/burndown-proof.md)
+for capture-age semantics and the existing history retention/privacy behavior.
+
 Claude supports three usage data paths plus local cost usage. The main provider pipeline uses runtime-specific
 automatic selection, but the codebase still has multiple active Claude `.auto` decision sites while the refactor is
 pending. For the exact current-state parity contract, see
@@ -365,16 +369,25 @@ Model-scoped weekly-window proof (synthetic data, no real accounts or credential
 
 ## CLI PTY (fallback)
 - Runs `claude` in a PTY session (`ClaudeCLISession`).
+- The bundled watchdog is discovered only in the running executable's resolved app bundle; launching through a CLI symlink preserves that association.
 - Default behavior: exit after each probe; Debug → "Keep CLI sessions alive" keeps it running between probes.
 - Both PTY probes and the non-PTY `/usage` fallback pass `--settings '{"remoteControlAtStartup":false}'` to disable Remote Control startup for the probe process. This process-local override leaves the user's saved settings unchanged; Claude's managed-settings policy still applies.
+- Both launches use `--strict-mcp-config` to skip the user's configured MCP servers. Saved nonessential-traffic restrictions remain in force.
 - A PTY timeout or usage-loading failure can trigger the non-PTY `/usage` fallback. Cancellation and rate limits stop the probe; a subscription-only notice from the fallback takes precedence over the original PTY failure.
+- Transient CLI timeouts and loading stalls preserve availability already established for that account, so a later
+  Auto refresh can retry CLI instead of stopping at missing OAuth credentials. They do not establish availability
+  for a previously unverified account; the existing Keychain and prompt policies still apply.
 - Probe working directory: `~/Library/Application Support/CodexBar/ClaudeProbe` with local Claude settings that disable
   deep-link URL handler registration during headless probes.
 - After transient probes exit, CodexBar removes Claude Code `.jsonl` session artifacts for that dedicated
   `ClaudeProbe` project directory so background `/usage` polling does not clutter the user's Claude project history.
 - Command flow:
   1) Start CLI with `--allowed-tools ""` (no tools).
-  2) Auto-respond to first-run prompts (trust files, workspace, telemetry).
+  2) Handle first-run prompts during startup and command capture. For the modern trust dialog, move the `❯`
+     selection to "Yes, I trust this folder" before confirming. Modern and legacy trust prompts are accepted only
+     in the dedicated probe directory. Redirected paths are rejected before local settings are prepared; headless
+     probes require that isolated directory and do not launch from the shared temporary fallback. Transcript cleanup
+     is also limited to that directory. An explicitly supplied different working directory never receives trust.
   3) Send `/usage`, wait for rendered panel; send Enter retries if needed.
   4) Dismiss the open panel with Escape before reusing the session for `/status` identity or the next `/usage` refresh.
   5) Optionally send `/status` to extract identity fields.
@@ -383,9 +396,14 @@ Model-scoped weekly-window proof (synthetic data, no real accounts or credential
     "Current session" + "Current week" headers. Cursor jumps preserve unchanged cells from earlier frames, keeping
     scoped weekly percentages, reset spacing, and account identity intact. Erased content is not reused as history.
   - Plain reports, including color-only ANSI output and legacy CR-delimited text, retain their existing parsing behavior.
+  - Capture completion uses the current rendered frame and waits for session quota values; percentages in the
+    "What's contributing to your limits usage?" insights section cannot finish a loading quota probe. Once quota is
+    complete, insight text cannot trigger another command-palette confirmation.
   - Extracts percent left/used and reset text near those headers.
   - When a reset date cannot be parsed, the menu preserves its description and normalizes leading `Reset` or `Resets` labels once, including scoped weekly limits.
   - Parses `Account:` and `Org:` lines when present.
+  - Excludes the "What's contributing to your limits usage?" insights section from quota and identity parsing.
+    User-defined tool names and usage-share percentages cannot become a plan badge or quota value.
   - A successful CLI quota read keeps the menu's Switch Account action even when optional identity fields are absent. Restored history and failed refreshes do not count as a successful sign-in.
   - Surfaces CLI errors (e.g. token expired) directly.
   - Some Education and organization-managed subscriptions return only a subscription notice, with no numeric
@@ -412,6 +430,7 @@ Model-scoped weekly-window proof (synthetic data, no real accounts or credential
   plus supported pi-compatible session files.
 - Parsing:
   - Native Claude logs parse lines with `type: "assistant"` and `message.usage`.
+  - Claude/Vertex filtering checks raw lines for possible metadata markers before walking decoded metadata. IDs and model names are checked in their decoded fields, so `@` and `_vrtx_` in tool content do not trigger that walk. Vertex-only scans skip decoding lines without any possible marker; escaped markers retain the full classifier and existing attribution rules.
   - Uses per-model token counts (input, cache read/create, output).
   - Oversized local token or cost values cannot crash history scanning. An overflowing token total stays unavailable while independent counts and finite dollar estimates remain visible; raw rows are retained for later repricing.
   - Deduplicates cumulative streaming chunks by `message.id + requestId`. When `requestId` is absent,
@@ -429,6 +448,7 @@ Model-scoped weekly-window proof (synthetic data, no real accounts or credential
   - Native provider cache: `~/Library/Caches/CodexBar/cost-usage/claude-v6.json`
   - Report memo: `~/Library/Caches/CodexBar/cost-usage/claude-v6.report-memo.json` stores source stamps and the daily report across launches. It is reused only while transcript inventory, cache/pricing artifacts, requested window, and report-semantics revision still match.
   - Unchanged sources reuse the memo even when a menu refresh bypasses the scan debounce. Explicit rescans still reparse transcripts, but identical cache and report-memo content is not rewritten; an unchanged rebuild retains its previous scan timestamp. Existing artifacts may be rewritten once to establish deterministic key ordering. Changed transcripts or report metadata still replace the corresponding complete JSON artifacts.
+  - Persistence keeps at most eight lightweight artifact identities independently of the decoded-row cache. An unchanged cache identity plus matching device/inode, size, and nanosecond mtime skips encoding; otherwise sorted JSON fingerprints avoid full-file read-back while preserving identical rebuilds. External replacement invalidates reuse, and changed files still use temporary-file rename. Evicted identities are re-established on load or the next save.
   - Decoded cache artifacts can be reused in memory while their canonical path, file identity, size, and nanosecond modification time match. Schema and time-zone checks still run on every load; report-level source, window, filter, and pricing checks still run separately. Atomic replacements invalidate this reuse, and explicit rescans still reparse source transcripts.
   - Successful cache saves retain the just-written decoded value, avoiding another full row decode on the next changed refresh. Unmodified loaded values skip encoding and writing while the artifact stamp still matches; external replacements, deleted files, and failed or cancelled saves cannot establish this reuse. Changed content still replaces the complete JSON artifact. Compact row field names reduce its size; schema 3 artifacts rebuild from transcripts once when the rows are next needed. Report memos and user-facing JSON retain their existing formats.
   - The app's Usage & Spend refresh uses `claude-history-v6.json` and its own report memo. The two app refreshes do not replace each other's retained rows or restart each other's transcript scans. Once both have established their windows, same-day append refreshes read changed tails once per cache.

@@ -1,17 +1,76 @@
 # Changelog
 
-## 0.69.1 — Unreleased
+## 0.70.1 — Unreleased
+
+### Security
+
+- Resolve bundled helpers and plugin resources from the running executable, and ignore working-directory-dependent CLI search paths (#4136). Thanks @maugt!
+
+### Changed
+
+- Docs: link the community codexbar-kde Plasma widget for Linux usage meters and agent-session views (#4117). Thanks @materemias!
+### Added
+
+- Antigravity: fetch quotas for saved Google accounts through private, temporary `agy` sessions, verify each account's identity, and retain refreshed credentials without changing the ambient CLI login (#4103). Thanks @Sogl!
 
 ### Fixed
 
-- Mistral: price billing usage by event type, API zone, and service tier, so a per-second audio or priority price no longer inflates API spend and 30-day token cost (#4076). Thanks @T0mSIlver!
+- Codex: reduce repeated Gatekeeper CPU use for unchanged standalone hardened-runtime CLIs, checking every architecture’s complete signature before reusing a verdict (#4078, #4080). Thanks @dustball!
+
+- Claude: retain an established CLI source after transient timeouts and loading stalls so Auto refreshes can retry without an unrelated missing-OAuth-credentials warning (#4129).
+- Claude: exclude usage-insights tool names and percentages from quota and account parsing (#4083).
+- Claude: keep configured MCP servers out of the direct `/usage` fallback (#4112). Thanks @sudoHG!
+
+- Menu bar: show the remaining quota when only the third usage window is available, including Gemini Flash Lite-only accounts, through the shared metric fallback (#4128). Thanks @devYRPauli!
+- iCloud Sync: recover a live Mac's saves after its records are removed from another Mac, without resetting shared sync state (#4144).
+- iCloud Sync: register for silent change notifications when the signed build supports push; release provisioning must enable that capability for automatic delivery (#4132).
+- Claude: answer current and legacy CLI trust dialogs only in the isolated probe directory, reject redirected paths, and wait for real quota values when usage insights are visible (#4115, #4083). Thanks @sudoHG!
+- Agent-aware Adaptive: use recent Codex rollout modification times to keep refreshes at five minutes even without a recognized live process, preserving consent and scan limits without reading rollout contents for activity (#4119, #4118). Thanks @hhh2210!
+
+- Agent Sessions: keep sessions that are still running after an in-place CLI update deleted their binary, such as Claude Code sessions started before an auto-update, instead of dropping them from the menu and `codexbar sessions` (#4120). Thanks @slavakurilyak!
+
+
+- Claude costs: reduce CPU use when rebuilding reports after local transcripts grow.
+- Reduce CPU use when saving unchanged local Claude and Vertex cost history.
+- Costs: avoid rebuilding Claude cost reports when refreshed model pricing is unchanged.
+- Cost: reduce allocation overhead when loading cached local Codex usage history.
+- Costs: reduce CPU use when scanning older Claude transcripts for recent usage.
+- Reduce CPU and filesystem work while identifying local agent processes during refreshes.
+- Reduce CPU use when refreshing model pricing while preserving historical fallback rates.
+- Costs: reduce CPU use while bucketing local agent logs into daily usage.
+- Costs: reduce CPU use while reconciling cached local Codex logs.
+- Codex: reduce CPU use when loading conversation titles for large local cost histories.
+- Reduce CPU use while scanning local Codex logs for cost data.
+- Costs: reduce CPU use when separating Claude and Vertex AI usage in local transcripts.
+
+## 0.70.0 — 2026-09-29
+
+### Highlights
+
+- Quota burndown: Plan Usage now shows the recorded remaining-quota burndown for Codex and Claude next to utilization history, with capture age and calendar endpoints (#4085). Thanks @callmejustdodo!
+- Refreshed provider colors: 16 accents now match official brand sources, while colors that would hurt menu bar or widget readability keep their current values (#4075). Thanks @elijahfriedman!
+- More accurate costs: Mistral usage is priced by event type, API zone, and service tier, Antigravity and Codex model aliases and published Cyber rates are priced, and Mistral's Monthly Plan can drive the menu bar metric (#4076, #4094, #4072). Thanks @T0mSIlver and @urda!
+- Hardened diagnostics: every stored process environment is redacted from debug and test output, with a repository guard against regressions (#4106).
+
 ### Security
 
 - Redact every remaining stored process environment in the app, CLI, provider contexts, and session scanners, and guard against new unredacted environment properties with a repository check (#4106).
 
+### Added
+
+- Plan Usage: show recorded remaining-quota burndown for Codex and Claude alongside utilization history, with capture age and calendar endpoints (#4085). Thanks @callmejustdodo!
+
+### Changed
+
+- Provider colors: refresh 16 verified brand accents while preserving readable menu colors and existing widget palettes; synchronize website and social preview colors (#4075). Thanks @elijahfriedman!
+
 ### Fixed
 
-- Codex: remember Gatekeeper verdicts for unchanged standalone CLI binaries, bound to the file actually assessed, instead of running `spctl --assess` on every lookup, which kept `syspolicyd` busy in proportion to the refresh cadence (#4078, #4080). Thanks @dustball!
+- Settings: keep the Usage & Spend title and Refresh button readable by giving the time-range picker its own row (#4064). Thanks @elijahfriedman!
+- Costs: price documented Antigravity and Codex model aliases, add published Cyber fallback rates, and preserve Sol estimates across the August 21 price change (#4094). Thanks @urda!
+- Mistral: offer Monthly Plan in the provider's Menu bar metric picker, so the menu bar and widgets can show the Vibe allowance without a `defaults write` (#4072). Thanks @T0mSIlver!
+- Mistral: price billing usage by event type, API zone, and service tier, so a per-second audio or priority price no longer inflates API spend and 30-day token cost (#4076). Thanks @T0mSIlver!
+- CLI: keep probe timeout and cancellation cleanup responsive on busy hosts with large process tables (#4108).
 - CLI: keep probe timeout and cancellation cleanup responsive when other processes have large environments (#4077).
 
 ## 0.69.0 — 2026-09-28
