@@ -190,7 +190,7 @@ struct CodexLaunchPreflightSignatureTests {
                 offset = blob + Int(length) - 1
             }
             let original = try #require(Signature.read(fixture.path))
-            let memo = Memo(onCacheHit: { if duringHit { fixture.change(offset) } })
+            let memo = Memo(hostAllowsMemoization: true, onCacheHit: { if duringHit { fixture.change(offset) } })
             var calls = 0
             func assess() {
                 _ = memo.assessment(path: fixture.path, isDefinitive: { _ in true }, assess: { path in
@@ -211,11 +211,21 @@ struct CodexLaunchPreflightSignatureTests {
     }
 
     @Test(arguments: [false, true])
-    func `mapped hardened text keeps the signature hash but the kernel kills execution`(universal: Bool) throws {
+    func `mapped hardened text follows the real host enforcement gate`(universal: Bool) throws {
         let fixture = try Fixture(universal: universal)
         let original = try #require(Signature.read(fixture.path))
         let baseline = try Self.run(fixture.path)
         try #require(baseline.terminationReason == .exit && baseline.terminationStatus == 0)
+        let host = CodexLaunchPreflight.HostEnforcement.current
+        let allowed = CodexLaunchPreflight.HostEnforcement.allowsMemoization
+        let bootMatches = CodexLaunchPreflight.HostEnforcement.forbiddenBootArguments.filter {
+            host.bootArguments?.lowercased().contains($0) == true
+        }
+        print("host gate: csrStatus=\(host.csrStatus) csrConfiguration=\(host.csrConfiguration) " +
+            "systemEnforcement=\(String(describing: host.systemEnforcement)) " +
+            "bootargsReadable=\(host.bootArguments != nil) bootargsEmpty=\(host.bootArguments?.isEmpty == true) " +
+            "bootargsMatches=\(bootMatches) allowed=\(allowed)")
+        #expect(allowed == host.isEnforced)
         let memo = Memo()
         var calls = 0
         func assess() {
@@ -235,17 +245,25 @@ struct CodexLaunchPreflightSignatureTests {
         #expect(try fixture.metadata() == before)
         #expect(try #require(Signature.read(fixture.path)) == original)
         assess()
-        #expect(calls == 1)
-        let changed = try Self.run(fixture.path)
-        #expect(changed.terminationReason == .uncaughtSignal)
-        #expect(changed.terminationStatus == SIGKILL)
-        print("mapped hardened text: universal=\(universal) assessments=\(calls) signal=\(changed.terminationStatus)")
+        if allowed {
+            #expect(calls == 1)
+            let changed = try Self.run(fixture.path)
+            #expect(changed.terminationReason == .uncaughtSignal)
+            #expect(changed.terminationStatus == SIGKILL)
+            print(
+                "mapped hardened text: universal=\(universal) assessments=\(calls) signal=\(changed.terminationStatus)")
+        } else {
+            #expect(calls == 2)
+            assess()
+            #expect(calls == 3)
+            print("mapped hardened text: universal=\(universal) hostGate=false freshAssessments=\(calls)")
+        }
     }
 
     @Test
     func `a hardened executable shares one assessment across one hundred lookups`() throws {
         let fixture = try Fixture()
-        let memo = Memo()
+        let memo = Memo(hostAllowsMemoization: true)
         var calls = 0
         for _ in 0..<100 {
             let result = memo.assessment(path: fixture.path, isDefinitive: { _ in true }, assess: { path in
@@ -262,7 +280,7 @@ struct CodexLaunchPreflightSignatureTests {
     func `hardened binaries opting out of page protection are never memoized`(universal: Bool) throws {
         let fixture = try Fixture(universal: universal, optOut: true)
         #expect(Signature.read(fixture.path) == nil)
-        let memo = Memo()
+        let memo = Memo(hostAllowsMemoization: true)
         var calls = 0
         for _ in 0..<3 {
             _ = memo.assessment(path: fixture.path, isDefinitive: { _ in true }, assess: { path in
@@ -281,7 +299,7 @@ struct CodexLaunchPreflightSignatureTests {
         for path in [fixture.path, text.path, fixture.root.appendingPathComponent("missing").path] {
             #expect(Signature.read(path) == nil)
             var calls = 0
-            let memo = Memo()
+            let memo = Memo(hostAllowsMemoization: true)
             for _ in 0..<3 {
                 _ = memo.assessment(path: path, isDefinitive: { _ in true }, assess: { candidate in
                     #expect(candidate == path)

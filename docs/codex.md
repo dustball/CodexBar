@@ -161,9 +161,11 @@ and stable account numbers distinguish rows while usable workspace labels remain
 
 ### Codex CLI RPC (automatic CLI source)
 - Launches local RPC server: `codex -s read-only -a never app-server`.
-- On macOS, standalone hardened-runtime CLI Gatekeeper verdicts are reused for at most five minutes while stat
+- On fully enforcing macOS hosts, standalone hardened-runtime CLI Gatekeeper verdicts are reused for at most five minutes while stat
   metadata and every architecture’s complete embedded signature remain unchanged. Page-protection opt-outs,
-  unsigned or malformed files, and app bundles use fresh assessments. Malware/quarantine checks run per lookup.
+  unsigned or malformed files, and app bundles use fresh assessments. A process-wide host check requires full SIP,
+  system code-signing enforcement, and readable boot arguments without enforcement overrides; failed or unknown
+  checks retain fresh assessment. Malware/quarantine checks run per lookup.
 - JSON-RPC over stdin/stdout:
   - `initialize` (client name/version)
   - `account/read`

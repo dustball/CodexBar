@@ -18,7 +18,7 @@
 
 ### Fixed
 
-- Codex: reduce repeated Gatekeeper CPU use for unchanged standalone hardened-runtime CLIs, checking every architecture’s complete signature before reusing a verdict (#4078, #4080). Thanks @dustball!
+- Codex: reduce repeated Gatekeeper CPU use for unchanged standalone hardened-runtime CLIs on fully enforcing hosts, checking every architecture’s complete signature before reusing a verdict (#4078, #4080). Thanks @dustball!
 
 - Claude: retain an established CLI source after transient timeouts and loading stalls so Auto refreshes can retry without an unrelated missing-OAuth-credentials warning (#4129).
 - Claude: exclude usage-insights tool names and percentages from quota and account parsing (#4083).

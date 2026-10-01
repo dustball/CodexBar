@@ -67,7 +67,7 @@ struct CodexLaunchPreflightMachOTests {
         fixture.change(directory + 13)
         #expect(Signature.read(fixture.path) == nil)
         var calls = 0
-        let memo = CodexLaunchPreflight.AssessmentMemo()
+        let memo = CodexLaunchPreflight.AssessmentMemo(hostAllowsMemoization: true)
         for _ in 0..<3 {
             _ = memo.assessment(path: fixture.path, isDefinitive: { _ in true }, assess: { path in
                 calls += 1

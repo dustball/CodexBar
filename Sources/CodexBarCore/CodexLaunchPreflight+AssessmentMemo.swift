@@ -14,8 +14,9 @@ extension CodexLaunchPreflight {
     /// a hash of every embedded signature; unsigned files and app bundles are never memoized.
     /// Mapped writes can leave stat unchanged: changing any signature byte invalidates the key. Only hardened
     /// runtime code without a page-protection opt-out is eligible (Apple TN3126). The kernel validates signed
-    /// pages at page-in; quarantine/xattr changes invalidate via ctime. The remaining check-then-exec race also exists
-    /// without the memo.
+    /// pages at page-in only on enforcing hosts: a process-wide gate requires full SIP, system enforcement,
+    /// and readable boot arguments without enforcement overrides. Otherwise every assessment stays fresh.
+    /// Quarantine/xattr changes invalidate via ctime; the remaining check-then-exec race exists without the memo.
     /// A verdict is kept only if the file's identity is unchanged when `spctl` returns, and a caller receives
     /// it only while its own path still names that file; otherwise the caller gets a fresh, unshared
     /// assessment of its path. The lifetime bounds how long a certificate revoked in place, with the file
@@ -54,15 +55,18 @@ extension CodexLaunchPreflight {
         private let lock = NSLock()
         private var entries: [FileIdentity: (assessment: GatekeeperAssessment, expiresAt: TimeInterval)] = [:]
         private var flights: [FileIdentity: Flight] = [:]
+        private let hostAllowsMemoization: Bool
         private let onJoin: @Sendable () -> Void
         private let onCacheHit: @Sendable () -> Void
         private let readSignature: @Sendable (String) -> SignatureIdentity?
 
         init(
+            hostAllowsMemoization: Bool = HostEnforcement.allowsMemoization,
             onJoin: @escaping @Sendable () -> Void = {},
             onCacheHit: @escaping @Sendable () -> Void = {},
             readSignature: @escaping @Sendable (String) -> SignatureIdentity? = SignatureIdentity.read)
         {
+            self.hostAllowsMemoization = hostAllowsMemoization
             self.onJoin = onJoin
             self.onCacheHit = onCacheHit
             self.readSignature = readSignature
@@ -81,7 +85,8 @@ extension CodexLaunchPreflight {
             isDefinitive: (GatekeeperAssessment) -> Bool,
             assess: (String) -> GatekeeperAssessment?) -> GatekeeperAssessment?
         {
-            guard let file = self.identity(path), self.identity(file.volumePath) == file
+            guard self.hostAllowsMemoization,
+                  let file = self.identity(path), self.identity(file.volumePath) == file
             else { return assess(path) }
             self.lock.lock()
             if let entry = self.entries[file], now < entry.expiresAt {

@@ -43,7 +43,7 @@ struct CodexLaunchPreflightAssessmentMemoTests {
         onJoin: @escaping @Sendable () -> Void = {},
         onCacheHit: @escaping @Sendable () -> Void = {}) -> Memo
     {
-        Memo(onJoin: onJoin, onCacheHit: onCacheHit, readSignature: { _ in
+        Memo(hostAllowsMemoization: true, onJoin: onJoin, onCacheHit: onCacheHit, readSignature: { _ in
             .init(digest: Data("synthetic signature".utf8))
         })
     }
