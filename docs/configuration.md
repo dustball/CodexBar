@@ -255,6 +255,8 @@ The **Macs** list offers **Remove** for other devices, including stale duplicate
 
 Automatic reception of changes requires a release signed with the macOS Push Notifications entitlement. When that capability is present, enabling sync registers for silent remote notifications; CKSyncEngine manages the CloudKit database subscription. The existing launch, foreground, and 15-minute fetch requests remain, but are not a guarantee of prompt delivery without push support. See [release setup](RELEASING.md#icloud-sync-cloudkit).
 
+Fetched records and removed-record recovery apply together with their local sync bookkeeping. Cancelling sync, turning it off, or accepting a newer batch prevents a suspended older apply from overwriting provider settings, preferences, or fleet records.
+
 Never synced, by design: `hooks` (sync payloads structurally cannot create or modify hook rules — they execute local binaries), machine-local paths (`claudeSwapExecutablePath`, `codexProfileHomePaths`, `awsProfile`/`awsAuthMode`, `source`, `codexActiveSource`, `cookieSource`), menu-bar layout/geometry, debug settings, usage history, and cost ledgers. A provider is never auto-enabled on a Mac where its required local CLI is missing. Records carry a schema version; older app versions pause sync instead of rewriting newer payloads. The CLI does not talk to CloudKit — the running app watches `config.json`, applies CLI or hand edits locally, and syncs changed provider payloads to the fleet when iCloud sync is enabled. Remote changes written to the file are recognized as app writes and are not echoed back. The app tracks per-provider dirty state and never re-uploads unchanged state at launch.
 
 ## Notes

@@ -97,6 +97,7 @@ Manual option:
 - Automatic usage (`codexbar usage --provider cursor`) supports the signed-in Cursor app on Linux after manual, cached, and
   stored sessions have been considered.
 - Authentication order: manual cookie header → cached session → stored session → Cursor app access token.
+- Linux requests use a reusable HTTP session with automatic cookie storage disabled, so a long-running `serve` process cannot replace the selected credential with cookies left by earlier responses.
 - The app token is read from absolute `$XDG_CONFIG_HOME/Cursor/User/globalStorage/state.vscdb`, then `$HOME/.config/...` when `HOME` is absolute, then the account home’s `.config/...`. Relative `XDG_CONFIG_HOME` / `HOME` values are ignored. The database is read-only; expired app tokens are not refreshed by CodexBar.
 - Cursor usage includes the Grok Bot weekly allowance and reset time when the account exposes it. Grok Bot endpoint failures do not hide Cursor usage.
 - Explicit `--source web` requires a manual cookie and never reads the app token.

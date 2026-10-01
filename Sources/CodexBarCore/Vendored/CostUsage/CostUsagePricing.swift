@@ -73,7 +73,7 @@ enum CostUsagePricing {
         let cacheReadInputCostPerTokenAboveThreshold: Double?
     }
 
-    private struct ClaudeCostTokens {
+    struct ClaudeCostTokens {
         let input: Int
         let cacheRead: Int
         let cacheCreation: Int
@@ -814,7 +814,7 @@ enum CostUsagePricing {
             + Double(max(0, tokens.output)) * outputRate
     }
 
-    private static func claudeCostUSD(pricing: ModelsDevPricingInfo, tokens: ClaudeCostTokens) -> Double {
+    static func claudeCostUSD(pricing: ModelsDevPricingInfo, tokens: ClaudeCostTokens) -> Double {
         // Provider-specific by design: OpenAI's threshold also applies to usage recorded by Claude Code.
         let bundledThreshold = pricing.providerID == self.codexModelsDevProviderID
             ? self.codex[self.normalizeCodexModel(pricing.modelID)]?.thresholdTokens
