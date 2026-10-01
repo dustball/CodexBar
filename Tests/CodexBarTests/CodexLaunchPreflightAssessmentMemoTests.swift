@@ -66,6 +66,35 @@ struct CodexLaunchPreflightAssessmentMemoTests {
     }
 
     @Test
+    func `a cache hit rechecks app ancestry even when an alias keeps the same inode`() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let native = try fixture.executable("standalone")
+        let bundle = fixture.root.appendingPathComponent("Payload.app")
+        let bundled = bundle.appendingPathComponent("codex")
+        let alias = fixture.root.appendingPathComponent("alias")
+        try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+        try FileManager.default.linkItem(at: native, to: bundled)
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: native)
+        let memo = Self.memo(onCacheHit: {
+            do {
+                try FileManager.default.removeItem(at: alias)
+                try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: bundled)
+            } catch {
+                Issue.record(error)
+            }
+        })
+        let calls = Counter()
+        _ = Self.assess(memo, alias.path, calls: calls)
+        _ = Self.assess(memo, alias.path, now: 1, calls: calls)
+        #expect(alias.resolvingSymlinksInPath() == bundled.resolvingSymlinksInPath())
+        #expect(calls.count == 2)
+        _ = Self.assess(memo, alias.path, now: 2, calls: calls)
+        #expect(calls.count == 3)
+        print("app ancestry recheck: requests=3 assessments=\(calls.count)")
+    }
+
+    @Test
     func `an unchanged executable is assessed once`() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }

@@ -553,7 +553,7 @@ public enum CodexLaunchPreflight {
         return !self.isExplicitlyBlockedAssessment(assessment.output, path: native)
     }
 
-    private static func containingAppBundlePath(for path: String) -> String? {
+    static func containingAppBundlePath(for path: String) -> String? {
         var candidate = URL(fileURLWithPath: path).standardizedFileURL
         while candidate.path != "/" {
             if candidate.pathExtension.caseInsensitiveCompare("app") == .orderedSame {
@@ -658,6 +658,8 @@ public enum CodexLaunchPreflight {
             bytes == [0xCA, 0xFE, 0xBA, 0xBF]
     }
 
+    /// The launch environment selects the npm payload on every lookup; spctl receives only that file.
+    /// Cache its identity, never the wrapper's environment-dependent launch decision.
     private static func memoizedSpctlAssessment(path: String) -> GatekeeperAssessment? {
         AssessmentMemo.shared.assessment(
             path: path,
@@ -665,7 +667,10 @@ public enum CodexLaunchPreflight {
             assess: { self.spctlAssessment(path: $0) })
     }
 
+    @TaskLocal static var spctlAssessmentOverrideForTesting: (@Sendable (String) -> GatekeeperAssessment?)?
+
     private static func spctlAssessment(path: String, timeout: TimeInterval = 5.0) -> GatekeeperAssessment? {
+        if let assess = self.spctlAssessmentOverrideForTesting { return assess(path) }
         let spctlPath = "/usr/sbin/spctl"
         guard FileManager.default.isExecutableFile(atPath: spctlPath) else { return nil }
 

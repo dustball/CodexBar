@@ -73,12 +73,16 @@ extension CodexLaunchPreflight {
         }
 
         private func identity(_ path: String) -> FileIdentity? {
-            FileIdentity(path: path, readSignature: self.readSignature)
+            // An external npm wrapper can select app-contained code; its bundle resources are not in this key.
+            guard CodexLaunchPreflight.containingAppBundlePath(for: path) == nil else { return nil }
+            let resolvedPath = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+            guard CodexLaunchPreflight.containingAppBundlePath(for: resolvedPath) == nil else { return nil }
+            return FileIdentity(path: path, readSignature: self.readSignature)
         }
 
         /// Returns the remembered verdict for the unchanged regular file `path` names, or assesses it. Only
         /// verdicts `isDefinitive` accepts are kept; timeouts, launch failures, and `spctl` errors stay
-        /// retryable. Directories (app bundles) are never memoized. Verdicts are reported for `path`.
+        /// retryable. App bundles and their code stay uncached. Verdicts are reported for `path`.
         func assessment(
             path: String,
             now: TimeInterval = ProcessInfo.processInfo.systemUptime,

@@ -165,7 +165,9 @@ and stable account numbers distinguish rows while usable workspace labels remain
   metadata and every architecture’s complete embedded signature remain unchanged. Page-protection opt-outs,
   unsigned or malformed files, and app bundles use fresh assessments. A process-wide host check requires full SIP,
   system code-signing enforcement, and readable boot arguments without enforcement overrides; failed or unknown
-  checks retain fresh assessment. Malware/quarantine checks run per lookup.
+  checks retain fresh assessment. Malware/quarantine checks run per lookup. npm payload selection also runs on
+  every lookup using the launch environment; only the selected standalone native file's assessment can be reused.
+  Selected payloads inside app bundles stay uncached, including when reached through symlinks.
 - JSON-RPC over stdin/stdout:
   - `initialize` (client name/version)
   - `account/read`
