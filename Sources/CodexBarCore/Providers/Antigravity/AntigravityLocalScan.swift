@@ -74,6 +74,9 @@ extension AntigravityLocalReader {
         let clock: () -> TimeInterval
         let started: TimeInterval
         var statistics = Statistics()
+        /// Schema text inspected in the current database. The schema allowance applies to each database,
+        /// like the entry and column limits, so a long history of small schemas never adds up to it.
+        private(set) var databaseSchemaBytes = 0
 
         init(
             limits: Limits,
@@ -104,10 +107,16 @@ extension AntigravityLocalReader {
             guard self.statistics.rows <= self.limits.rows else { throw ScanFailure.exhausted }
         }
 
+        func beginDatabase() {
+            self.databaseSchemaBytes = 0
+        }
+
         func chargeSchemaBytes(_ count: Int) throws {
             try self.check()
-            let (attempted, overflow) = self.statistics.schemaBytes.addingReportingOverflow(count)
-            self.statistics.schemaBytes = overflow ? Int.max : attempted
+            let (total, totalOverflow) = self.statistics.schemaBytes.addingReportingOverflow(count)
+            self.statistics.schemaBytes = totalOverflow ? Int.max : total
+            let (attempted, overflow) = self.databaseSchemaBytes.addingReportingOverflow(count)
+            self.databaseSchemaBytes = overflow ? Int.max : attempted
             guard !overflow, attempted <= self.limits.schemaBytes else { throw ScanFailure.schemaExhausted }
         }
     }

@@ -78,6 +78,24 @@ struct CodexLaunchPreflightMachOTests {
     }
 
     @Test
+    func `DER opt out is detected even without the XML entitlement slot`() throws {
+        let fixture = try Fixture(universal: true, optOut: true)
+        var bytes = try Data(contentsOf: URL(fileURLWithPath: fixture.path))
+        for slice in fixture.slices {
+            try #require(slice.blobs[7] != nil)
+            let count = Self.word(bytes, slice.signature + 8)
+            for index in 0..<Int(count) {
+                let entry = slice.signature + 12 + index * 8
+                if Self.word(bytes, entry) == 5 {
+                    Self.write(UInt32(255), to: &bytes, at: entry)
+                }
+            }
+        }
+        try bytes.write(to: URL(fileURLWithPath: fixture.path))
+        #expect(Signature.read(fixture.path) == nil)
+    }
+
+    @Test
     func `truncated overflowing overlapping and missing signature structures bypass the memo`() throws {
         let fixture = try Fixture(universal: true)
         let original = try Data(contentsOf: URL(fileURLWithPath: fixture.path))

@@ -1035,11 +1035,6 @@ struct ProviderArchitectureGatekeeperTests {
             expectedProviderIDs: ["antigravity"],
             reason: "This named provider resolver supplies its fixed provider identity to the shared presentation helper."),
         SuppressedProviderReference(
-            path: "Sources/CodexBar/MenuBarMetricWindowResolver.swift",
-            anchor: "let presentation = ProviderDescriptorRegistry.descriptor(for: .claude).presentation",
-            expectedProviderIDs: ["claude"],
-            reason: "This named provider resolver supplies its fixed provider identity to the shared presentation helper."),
-        SuppressedProviderReference(
             path: "Sources/CodexBar/MiniMaxAPITokenStore.swift",
             anchor: "logCategory: LogCategories.provider(.minimax, scope: \"api-token-store\"))",
             expectedProviderIDs: ["minimax"],
@@ -2309,11 +2304,10 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact shared construct dispatches a provider-owned capability at the generic integration boundary."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/SessionQuotaNotifications.swift",
-            occurrence: 1,
-            anchor: "codexOwnerKey: observation.provider == .codex ? observation.codexOwnerKey : nil,",
+            anchor: "trustedResetBoundary: observation.provider == .codex",
             expectedProviderIDs: ["codex"],
-            expectedReferenceCount: 2,
-            expectedReferenceFingerprint: ["codex@0", "codex@1"],
+            expectedReferenceCount: 1,
+            expectedReferenceFingerprint: ["codex@0"],
             reason: "This exact shared construct dispatches a provider-owned capability at the generic integration boundary."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/SessionQuotaNotifications.swift",
@@ -2322,14 +2316,7 @@ struct ProviderArchitectureGatekeeperTests {
             expectedReferenceCount: 1,
             expectedReferenceFingerprint: ["codex@0"],
             reason: "This exact shared construct dispatches a provider-owned capability at the generic integration boundary."),
-        AllowedProviderConstruct(
-            path: "Sources/CodexBar/SessionQuotaNotifications.swift",
-            occurrence: 2,
-            anchor: "codexOwnerKey: observation.provider == .codex ? observation.codexOwnerKey : nil,",
-            expectedProviderIDs: ["codex"],
-            expectedReferenceCount: 1,
-            expectedReferenceFingerprint: ["codex@0"],
-            reason: "This exact shared construct dispatches a provider-owned capability at the generic integration boundary."),
+
         AllowedProviderConstruct(
             path: "Sources/CodexBar/SessionQuotaNotifications.swift",
             anchor: "if provider == .codex,",
@@ -3066,12 +3053,12 @@ struct ProviderArchitectureGatekeeperTests {
                 "codex@5",
                 "codex@7",
                 "codex@8",
-                "codex@15",
-                "codex@17",
-                "codex@23",
-                "codex@29",
-                "codex@32",
-                "codex@35",
+                "codex@16",
+                "codex@18",
+                "codex@24",
+                "codex@30",
+                "codex@33",
+                "codex@36",
             ],
             reason: "This exact app-runtime bridge coordinates provider-owned state through the shared controller."),
         AllowedProviderConstruct(

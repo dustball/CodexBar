@@ -89,6 +89,7 @@ struct CodexLaunchPreflightSignatureTests {
             defer { if !completed { try? FileManager.default.removeItem(at: root) } }
             let source = root.appendingPathComponent("fixture.c")
             let path = root.appendingPathComponent("fixture").path
+            // Keep main off the header page so mutation proves a page-in kill, rather than EBADEXEC at spawn.
             try "__attribute__((aligned(16384))) int main(void) { return 0; }\n"
                 .write(to: source, atomically: true, encoding: .utf8)
             let architectures = universal ? ["-arch", "arm64", "-arch", "x86_64"] : []

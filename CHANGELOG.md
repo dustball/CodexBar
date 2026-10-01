@@ -2,6 +2,9 @@
 
 ## 0.70.1 — Unreleased
 
+### Added
+
+- Notifications: opt-in reset alerts name the provider and session or weekly window, keep restored notices on the correct account, respect Hide personal info, and remember announced reset boundaries across refreshes and restarts (#4138). Thanks @zleo-ai!
 ### Security
 
 - Resolve bundled helpers and plugin resources from the running executable, and ignore working-directory-dependent CLI search paths (#4136). Thanks @maugt!
@@ -33,6 +36,11 @@
 - Claude costs: reduce CPU use when rebuilding reports after local transcripts grow.
 - Reduce CPU use when saving unchanged local Claude and Vertex cost history.
 - Costs: avoid rebuilding Claude cost reports when refreshed model pricing is unchanged.
+- OpenCode: restore migrated Console workspace quota and prepaid balance, preserve legacy sessions, and label 30-day spend without inventing a monthly spending limit (#4131, #4139). Thanks @luochen211!
+- Claude: treat unmeasured session placeholders as unavailable while retaining real weekly quotas in menus and the CLI (#4107). Thanks @emanuelst!
+- Claude: show the claude-swap executable field and its help beneath the enabled account toggle (#4122). Thanks @laitifranz!
+- Claude: use a known model-scoped weekly quota for automatic and combined menu bar percentages when the regular quota windows are absent (#4126).
+- Menu bar: show the remaining quota when only the third usage window is available, including Gemini Flash Lite-only accounts, through the shared metric fallback (#4128). Thanks @devYRPauli!
 - Cost: reduce allocation overhead when loading cached local Codex usage history.
 - Costs: reduce CPU use when scanning older Claude transcripts for recent usage.
 - Reduce CPU and filesystem work while identifying local agent processes during refreshes.
@@ -42,6 +50,8 @@
 - Codex: reduce CPU use when loading conversation titles for large local cost histories.
 - Reduce CPU use while scanning local Codex logs for cost data.
 - Costs: reduce CPU use when separating Claude and Vertex AI usage in local transcripts.
+- Antigravity: exclude model IDs from local token totals, correct visible and reasoning output counts, and estimate safety-routed Gemini Flash usage (#4124). Thanks @urda!
+- Antigravity: apply schema text limits per database so normal histories do not become partial after a few hundred sessions, and retain valid rows around oversized schemas (#4133). Thanks @urda!
 
 ## 0.70.0 — 2026-09-29
 

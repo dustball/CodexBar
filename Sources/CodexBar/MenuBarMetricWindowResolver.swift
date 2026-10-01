@@ -187,18 +187,11 @@ enum MenuBarMetricWindowResolver {
     /// marked placeholder). Lets the automatic and combined metrics surface the spend limit instead of an empty
     /// or 0% placeholder lane. Returns nil for accounts that expose genuine quota lanes.
     static func claudeSpendLimitWindow(snapshot: UsageSnapshot) -> RateWindow? {
-        let presentation = ProviderDescriptorRegistry.descriptor(for: .claude).presentation
-        switch presentation.menuBarWindow(context: ProviderMenuBarWindowContext(
-            metric: .automatic,
-            snapshot: snapshot,
-            supportsAverage: false,
-            prioritizesExhaustedQuotas: false,
-            now: .now))
-        {
-        case let .resolved(window):
-            return window
-        case .unhandled:
-            return nil
-        }
+        guard snapshot.primary == nil || snapshot.primary?.isSyntheticPlaceholder == true,
+              snapshot.secondary == nil, snapshot.tertiary == nil,
+              snapshot.claudeScopedWeeklyWindow == nil,
+              let cost = snapshot.providerCost, cost.limit > 0
+        else { return nil }
+        return cost.spendLimitWindow
     }
 }

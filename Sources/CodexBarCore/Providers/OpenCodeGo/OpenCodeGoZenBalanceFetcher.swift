@@ -156,7 +156,7 @@ extension OpenCodeGoUsageFetcher {
         timeout: TimeInterval,
         session: URLSession) async throws -> Double?
     {
-        try await OpenCodeGoLegacyFallback.fetch(
+        try await OpenCodeLegacyFallback.fetch(
             cookieHeader: cookieHeader,
             isUsableLegacyValue: { $0 != nil },
             console: {

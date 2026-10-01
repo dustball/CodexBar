@@ -1413,7 +1413,7 @@ extension UsageStore {
                 provider: .codex,
                 snapshot: snapshot,
                 accountDiscriminator: codexOwnerKey?.rawValue)
-            self.handleSessionQuotaTransition(
+            let sessionRestored = self.handleSessionQuotaTransition(
                 provider: .codex,
                 snapshot: snapshot,
                 codexOwnerKey: codexOwnerKey)
@@ -1432,7 +1432,8 @@ extension UsageStore {
             await self.recordPlanUtilizationHistorySample(
                 provider: .codex,
                 snapshot: snapshot,
-                codexLimitResetOwnerKey: limitResetOwnerKey)
+                codexLimitResetOwnerKey: limitResetOwnerKey,
+                sessionRestoredNotificationPending: sessionRestored)
             guard self.isCurrentProviderRefreshGeneration(.codex, generation: generation) else { return }
             self.emitUsageUpdatedHook(
                 provider: .codex,
@@ -1498,7 +1499,8 @@ extension UsageStore {
                 provider: provider,
                 snapshot: backfilled,
                 accountDiscriminator: warningAccountDiscriminator)
-            self.handleSessionQuotaTransition(provider: provider, snapshot: backfilled)
+            let sessionRestored = self.handleSessionQuotaTransition(
+                provider: provider, snapshot: backfilled, accountDiscriminator: warningAccountDiscriminator)
             self.handlePredictivePaceWarningTransitions(
                 provider: provider,
                 snapshot: backfilled,
@@ -1522,7 +1524,8 @@ extension UsageStore {
             await self.recordPlanUtilizationHistorySample(
                 provider: provider,
                 snapshot: backfilled,
-                account: account)
+                account: account,
+                sessionRestoredNotificationPending: sessionRestored)
             guard self.isCurrentProviderRefreshGeneration(provider, generation: generation) else { return }
             self.emitUsageUpdatedHook(
                 provider: provider,
