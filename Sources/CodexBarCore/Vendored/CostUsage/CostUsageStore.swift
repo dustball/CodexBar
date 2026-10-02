@@ -80,6 +80,7 @@ actor CostUsageStore {
         parserHash: CodexParserHash.value)
     static let cacheGeneration = "sqlite:\(CostUsageStore.schemaVersion)"
     static let compatiblePredecessorParserHashes: Set<String> = [
+        "04a6361469a4ff77", // Settled orphan scheduling preserves rows, replay buffers, and checkpoints.
         "98de5f52231e524e", // 0.68.0 rows and checkpoints survive sparse priority-day reconciliation.
         "9972dad7f7aeff21", // Direct-fork baseline corrections use bounded parser-revision migration.
         "4dd9e5769818370a", // Linux Priority trace support preserves native rows and checkpoints.

@@ -1704,7 +1704,14 @@ enum CostUsageScanner {
                     metadata: ["sessionId": sessionId, "timestamp": cutoffTimestamp])
             }
             let resolution = try self.snapshotResolution(for: sessionId)
-            guard resolution.hasSnapshotSource else { return .unresolved }
+            let dependencyKey = resolution.dependencyKey.map {
+                $0 + (resolution.forkOriginDependencyKey.map { "|inherited|" + $0 } ?? "")
+            }
+            guard resolution.hasSnapshotSource else {
+                self.resolvedDependencyKeys[sessionId] = dependencyKey
+                    .flatMap { CostUsageScanner.codexDependencyIsMissing($0) ? $0 : nil }
+                return .unresolved
+            }
             if !resolution.isComplete {
                 guard let lastTimestamp = resolution.lastTimestamp else { return .unresolved }
                 let lastDate = CostUsageScanner.dateFromTimestamp(lastTimestamp)
@@ -1720,10 +1727,7 @@ enum CostUsageScanner {
                 cutoffTimestamp: cutoffTimestamp,
                 cutoffDate: cutoffDate)
             if inherited == nil, resolution.isFork, resolution.forkOrigin == nil { return .unresolved }
-            if let dependencyKey = resolution.dependencyKey {
-                self.resolvedDependencyKeys[sessionId] = dependencyKey
-                    + (resolution.forkOriginDependencyKey.map { "|inherited|" + $0 } ?? "")
-            }
+            self.resolvedDependencyKeys[sessionId] = dependencyKey
             return .resolved(inherited)
         }
 
@@ -1793,7 +1797,10 @@ enum CostUsageScanner {
             case let .found(fileURL):
                 let key = self.dependencyKey(for: sessionId, fileURL: fileURL)
                 let usage = self.cachedFiles[fileURL.path] ?? self.cachedFiles[fileURL.standardizedFileURL.path]
-                let parentID = usage?.codexForkAccountingState?.metadata.forkedFromId
+                let missingParentID = usage.flatMap {
+                    CostUsageScanner.isUnresolvedMissingParentFork($0) ? $0.forkedFromId : nil
+                }
+                let parentID = usage?.codexForkAccountingState?.metadata.forkedFromId ?? missingParentID
                     ?? self.snapshotResolutions[sessionId]?.forkOrigin?.metadata.forkedFromId
                 guard let parentID else { return key }
                 guard let inheritedKey = try self.currentDependencyKey(
@@ -1843,7 +1850,6 @@ enum CostUsageScanner {
                     dependencyKey: dependencyKey,
                     isComplete: false)
                 self.snapshotResolutions[sessionId] = resolution
-                self.resolvedDependencyKeys[sessionId] = dependencyKey
                 return resolution
             case .deferred:
                 let resolution = SnapshotResolution(
@@ -1973,8 +1979,10 @@ enum CostUsageScanner {
                         metadata: metadata)
                 } == true
             guard metadataMatches || appendSafePrefixMatches else { return nil }
-            if let parentID = usage.codexForkAccountingState?.metadata.forkedFromId,
-               try usage.forkBaselineDependencyKey != self.currentDependencyKey(for: parentID)
+            let missingParent = CostUsageScanner.isUnresolvedMissingParentFork(usage)
+            if let parentID = usage.codexForkAccountingState?.metadata.forkedFromId
+                ?? (missingParent ? usage.forkedFromId : nil),
+                try usage.forkBaselineDependencyKey != self.currentDependencyKey(for: parentID)
             {
                 return nil
             }
@@ -1984,13 +1992,13 @@ enum CostUsageScanner {
                 && indexedBytes >= metadata.size
             return SnapshotResolution(
                 dependencyKey: self.dependencyKey(for: sessionId, fileURL: fileURL),
-                indexedEvents: cachedSnapshots,
+                indexedEvents: missingParent ? nil : cachedSnapshots,
                 checkpoints: usage.codexTokenCheckpoints ?? [],
                 indexedTimestampsMonotonic: usage.codexTokenTimestampsMonotonic == true,
                 isComplete: coversCurrentFile && !usage.hasBufferedCodexForkRetryLines,
                 isFork: usage.forkedFromId != nil,
                 forkOrigin: usage.codexForkAccountingState,
-                forkOriginDependencyKey: usage.codexForkAccountingState != nil
+                forkOriginDependencyKey: usage.codexForkAccountingState != nil || (coversCurrentFile && missingParent)
                     ? usage.forkBaselineDependencyKey : nil)
         }
     }
@@ -2191,8 +2199,8 @@ enum CostUsageScanner {
             let hasRelevantDay = usage.days.keys.contains {
                 CostUsageDayRange.isInRange(dayKey: $0, since: range.scanSinceKey, until: range.scanUntilKey)
             }
-            let hasPendingWork = usage.codexScanComplete == false || usage.hasBufferedCodexForkRetryLines
-            guard hasRelevantDay || hasPendingWork else { return nil }
+            guard hasRelevantDay || usage.hasBufferedCodexForkRetryLines || usage.hasPendingCodexScanWork
+            else { return nil }
             guard FileManager.default.fileExists(atPath: path) else { return nil }
             let fileURL = URL(fileURLWithPath: path)
             guard Self.isWithinCodexRoots(fileURL: fileURL, roots: roots) else { return nil }
@@ -5723,8 +5731,7 @@ enum CostUsageScanner {
         options: Options) -> CostUsageCodexPreviousReport?
     {
         let currentScanIsPending = cache.codexScanCatchUpPending == true
-            || cache.files.values.contains { $0.codexScanComplete == false }
-            || cache.files.values.contains { $0.hasBufferedCodexForkRetryLines }
+            || cache.files.values.contains(where: \.hasPendingCodexScanWork)
         if currentScanIsPending,
            let previous = self.codexPreviousReport(
                cache: cache,
@@ -5737,35 +5744,27 @@ enum CostUsageScanner {
         // A routine bounded refresh can turn an established cache back into pending while it
         // validates a growing active tail. Snapshot the established report before any refresh,
         // not only explicit rescans, so presentation can remain stable until catch-up converges.
-        let sourceCache: CostUsageCache? = if plan.shouldRefresh,
-                                              !currentScanIsPending,
-                                              !cache.days.isEmpty
-        {
-            cache
-        } else {
-            nil
-        }
-        guard let sourceCache,
-              sourceCache.timeZoneIdentifier == range.calendar.timeZone.identifier,
-              sourceCache.roots == plan.rootsFingerprint,
-              !self.requestedWindowExpandsCache(range: range, cache: sourceCache),
-              !sourceCache.days.isEmpty
+        guard plan.shouldRefresh,
+              !currentScanIsPending,
+              !cache.days.isEmpty,
+              CostUsageStoreReadView(cache: cache, purpose: .report).historyCoverageIsEstablished(
+                  range: range, rootsFingerprint: plan.rootsFingerprint)
         else { return nil }
 
         let priorityTurns = if plan.priorityValidationPending {
-            Self.validatedPriorityTurns(cache: sourceCache, calendar: range.calendar)
+            Self.validatedPriorityTurns(cache: cache, calendar: range.calendar)
         } else {
             plan.priorityTurns
         }
         let report = self.buildCodexReportFromCache(
-            cache: sourceCache,
+            cache: cache,
             range: range,
             modelsDevCatalog: plan.modelsDevCatalog,
             modelsDevCacheRoot: options.cacheRoot,
             priorityTurns: priorityTurns)
         return CostUsageCodexPreviousReport(
             report: report,
-            cache: sourceCache,
+            cache: cache,
             reportSinceKey: range.sinceKey,
             reportUntilKey: range.untilKey)
     }
@@ -5922,18 +5921,14 @@ enum CostUsageScanner {
                 && (scanBudget.hasTimeLimit || scanBudget.maxFileBytes > 0 || scanBudget.maxBytesPerRefresh > 0)
                 && ((scanBudget.hasTimeLimit && cache.files.isEmpty)
                     || cache.codexScanCatchUpPending == true
-                    || cache.files.values.contains {
-                        $0.codexScanComplete == false || $0.hasBufferedCodexForkRetryLines
-                    }
+                    || cache.files.values.contains(where: \.hasPendingCodexScanWork)
                     || cache.codexActiveLookbackState != nil
                     || plan.requiresCacheWideFileReprocessing)
             let shouldPageDiscovery = scanBudget.hasTimeLimit && shouldBoundCatchUp && !isExactInventoryProofPass
             if shouldBoundCatchUp, !scanBudget.hasTimeLimit || activeLookbackStateWasReset {
                 Self.appendCodexActiveLookbackPaths(
-                    cache.files.keys.sorted().filter {
-                        cache.files[$0]?.codexScanComplete == false
-                            || cache.files[$0]?.hasBufferedCodexForkRetryLines == true
-                    }.map { URL(fileURLWithPath: $0) },
+                    cache.files.keys.sorted().filter { cache.files[$0]?.hasPendingCodexScanWork == true }
+                        .map { URL(fileURLWithPath: $0) },
                     state: &activeLookbackState)
             }
             let migrationQueueOwnsCachedPaths = plan.requiresCacheWideFileReprocessing
@@ -6054,7 +6049,7 @@ enum CostUsageScanner {
                 // files that were discovered but never admitted on an earlier pass.
                 let dirtyFiles = files.filter { fileURL in
                     guard let usage = cache.files[fileURL.path], usage.codexScanComplete == true,
-                          !usage.hasBufferedCodexForkRetryLines else { return true }
+                          !usage.hasPendingCodexForkRetry else { return true }
                     let metadata = listingMetadata(fileURL)
                     return Self.codexLogicalTargetHasUnconsumedTail(metadata: metadata, cached: usage)
                         || usage.size != metadata.size || usage.mtimeUnixMs != metadata.mtimeUnixMs
@@ -6115,7 +6110,7 @@ enum CostUsageScanner {
                     workRecorder: options.codexScanWorkRecorderForTesting))
             let filesScheduledForRefresh = refreshSelection.files
             let completionStatesBeforeScan = Self.codexCompletionStates(
-                files: filesScheduledForRefresh.prefix(Self.codexCatchUpScanCandidateLimit),
+                paths: filesScheduledForRefresh.prefix(Self.codexCatchUpScanCandidateLimit).map(\.path),
                 cache: cache,
                 includePreviouslyCompletedSnapshots: true)
             let fileIndex = CodexSessionFileIndex(
@@ -6321,8 +6316,7 @@ enum CostUsageScanner {
             cache.codexSessionDiscovery = fileIndex.persistedState
             let catchUpPending = !canValidateExactInventory
                 || scanProgress.completedFiles < scanProgress.totalFiles
-                || cache.files.values.contains { $0.codexScanComplete == false }
-                || cache.files.values.contains { $0.hasBufferedCodexForkRetryLines }
+                || cache.files.values.contains(where: \.hasPendingCodexScanWork)
             cache.codexScanCatchUpPending = catchUpPending
             cache.codexPreviousReport = catchUpPending ? previousReport : nil
             if plan.inspectedPriorityTurns {
@@ -6470,17 +6464,6 @@ enum CostUsageScanner {
     }
 
     private static func codexCompletionStates(
-        files: some Sequence<URL>,
-        cache: CostUsageCache,
-        includePreviouslyCompletedSnapshots: Bool) -> [String: Bool]
-    {
-        self.codexCompletionStates(
-            paths: files.map(\.path),
-            cache: cache,
-            includePreviouslyCompletedSnapshots: includePreviouslyCompletedSnapshots)
-    }
-
-    private static func codexCompletionStates(
         paths: some Sequence<String>,
         cache: CostUsageCache,
         includePreviouslyCompletedSnapshots: Bool) -> [String: Bool]
@@ -6488,7 +6471,7 @@ enum CostUsageScanner {
         paths.reduce(into: [String: Bool]()) { result, path in
             let standardizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
             guard let usage = cache.files[path] ?? cache.files[standardizedPath],
-                  !usage.hasBufferedCodexForkRetryLines
+                  !usage.hasPendingCodexForkRetry
             else {
                 result[path] = false
                 return
@@ -6505,9 +6488,8 @@ enum CostUsageScanner {
         usage: CostUsageFileUsage) -> Int64?
     {
         let identityMatches = usage.codexScanFileId == nil || usage.codexScanFileId == metadata.fileId
-        guard usage.codexScanComplete != false,
+        guard !usage.hasPendingCodexScanWork,
               usage.codexJSONLResumeState == nil,
-              !usage.hasBufferedCodexForkRetryLines,
               identityMatches
         else { return nil }
         let parsedBytes = max(0, usage.parsedBytes ?? usage.size)

@@ -40,9 +40,7 @@ struct CostUsageStoreReadView: Sendable {
     }
 
     var hasPendingScan: Bool {
-        self.cache.codexScanCatchUpPending == true || self.cache.files.values.contains {
-            $0.codexScanComplete == false || $0.hasBufferedCodexForkRetryLines
-        }
+        self.cache.codexScanCatchUpPending == true || self.cache.files.values.contains(where: \.hasPendingCodexScanWork)
     }
 
     func scoped(to roots: [URL]) -> Self {
@@ -65,6 +63,14 @@ struct CostUsageStoreReadView: Sendable {
 
         let roots = rootsFingerprint.keys.map { URL(fileURLWithPath: $0, isDirectory: true) }
         let scoped = self.scoped(to: roots)
+        // Exhausted parent discovery settles scheduling, not accounting. Only disjoint,
+        // fully parsed windows can be published while the missing baseline is retained.
+        guard scoped.cache.files.values.allSatisfy({ usage in
+            !CostUsageScanner.isUnresolvedMissingParentFork(usage)
+                || (usage.codexScanComplete == true && usage.hasCurrentCodexParser
+                    && !usage.touchesCodexScanWindow(
+                        sinceKey: range.sinceKey, untilKey: range.untilKey, calendar: range.calendar))
+        }) else { return false }
         guard scoped.hasPendingScan else { return true }
 
         if let discovery = scoped.cache.codexSessionDiscovery,
@@ -77,8 +83,7 @@ struct CostUsageStoreReadView: Sendable {
         guard scoped.purpose != .status,
               scoped.cache.files.values.allSatisfy({ usage in
                   usage.codexScanComplete == true && usage.codexCostCacheComplete == true
-                      && usage.hasCurrentCodexParser && !usage.hasBufferedCodexForkRetryLines
-                      && !CostUsageScanner.isUnresolvedMissingParentFork(usage)
+                      && usage.hasCurrentCodexParser && !usage.hasPendingCodexForkRetry
               })
         else { return false }
 

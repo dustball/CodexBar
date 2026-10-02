@@ -827,8 +827,7 @@ extension CostUsageStore {
                 let metadata = CostUsageScanner.codexFileMetadata(fileURL: fileURL)
                 guard let fileId = metadata.fileId,
                       let cachedEntry = Self.cachedCodexUsageEntry(for: path, cache: cache),
-                      cachedEntry.usage.codexScanComplete != false,
-                      !cachedEntry.usage.hasBufferedCodexForkRetryLines
+                      !cachedEntry.usage.hasPendingCodexScanWork
                 else {
                     continue
                 }
@@ -874,9 +873,7 @@ extension CostUsageStore {
             !$0.isComplete && (!$0.pendingSessionIds.isEmpty || $0.headScan != nil)
         } ?? false
         guard !discoveryHasPendingWork else { return }
-        let filesHavePendingWork = cache.files.values.contains {
-            $0.codexScanComplete == false || $0.hasBufferedCodexForkRetryLines
-        }
+        let filesHavePendingWork = cache.files.values.contains(where: \.hasPendingCodexScanWork)
         guard !filesHavePendingWork else { return }
         let expectedTotalFiles = max(0, cache.codexScanTotalFiles ?? 0)
         let reconciliationLimit = CostUsageScanner.codexCatchUpScanCandidateLimit
@@ -948,8 +945,7 @@ extension CostUsageStore {
             guard let usage = cache.files[path]
                 ?? cachedFilesByNormalizedPath[Self.normalizedCodexPath(path)]
                 ?? cachedFilesByIdentity[fileId],
-                usage.codexScanComplete != false,
-                !usage.hasBufferedCodexForkRetryLines,
+                !usage.hasPendingCodexScanWork,
                 Self.matchesCompletedCodexFileSnapshot(
                     usage: usage,
                     metadata: metadata,

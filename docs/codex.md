@@ -383,8 +383,14 @@ the local result and returns a nonzero exit code. See [CLI host reporting](cli.m
 - Pending local-history files receive a turn before fresh work, within the existing byte and duration limits.
   Unfinished files rotate behind waiting work, and the queue survives restarts without rebuilding compatible caches.
 - Parent-session discovery also resumes within those limits after the requesting fork files leave both scan roots.
-  Stale pending path associations are reconciled in the existing cache; surviving forks with missing parents still
-  retain their unresolved usage instead of being counted as complete.
+  Stale pending path associations are reconciled in the existing cache. Once bounded discovery confirms a parent is
+  missing, fully read forks stop keeping catch-up pending, including descendants of an orphaned fork. Their unresolved
+  usage remains buffered and unmetered; a changed parent dependency retries accounting when the parent returns.
+  Reporting windows overlapping the fork's observed event span remain incomplete, while independent dates can publish
+  normally. A session's start date alone cannot establish that independence. Existing caches retain stored rows,
+  replay buffers, and scan checkpoints during this update, including the 0.70.0 parser fingerprint
+  `04a6361469a4ff77`. The change settles scheduling and checks coverage from existing metadata; it does not change
+  parsed token rows or replay checkpoints, so compatible predecessor caches do not need a rebuild.
 
 ### Usage & Spend session rows
 

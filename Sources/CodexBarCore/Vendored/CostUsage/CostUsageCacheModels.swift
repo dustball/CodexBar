@@ -389,6 +389,16 @@ struct CostUsageFileUsage: Codable, Equatable {
     var hasBufferedCodexForkRetryLines: Bool {
         self.hasBufferedCodexSubagentLines || self.hasBufferedCodexUnresolvedForkLines
     }
+
+    var hasPendingCodexForkRetry: Bool {
+        // A confirmed missing parent settles scheduling. Keep its buffer for dependency changes.
+        self.hasBufferedCodexForkRetryLines
+            && (self.forkBaselineDependencyKey == nil || !CostUsageScanner.isUnresolvedMissingParentFork(self))
+    }
+
+    var hasPendingCodexScanWork: Bool {
+        self.codexScanComplete == false || self.hasPendingCodexForkRetry
+    }
 }
 
 struct CostUsageCodexSessionMetadata: Codable, Equatable {
