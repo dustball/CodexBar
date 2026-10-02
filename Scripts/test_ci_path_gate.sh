@@ -201,10 +201,10 @@ if [[ -s "$unterminated_output" ]]; then
 fi
 
 verify="${ROOT_DIR}/Scripts/ci_verify_test_jobs.sh"
-"$verify" success success true success false true success success >/dev/null
-"$verify" success success true success false false skipped success >/dev/null
-"$verify" success success false skipped false true success success >/dev/null
-"$verify" success success false skipped false false skipped success >/dev/null
+"$verify" success success true success false true success success success >/dev/null
+"$verify" success success true success false false skipped success success >/dev/null
+"$verify" success success false skipped false true success success skipped >/dev/null
+"$verify" success success false skipped false false skipped success skipped >/dev/null
 
 assert_verify_fails() {
   if "$verify" "$@" >/dev/null 2>&1; then
@@ -213,17 +213,24 @@ assert_verify_fails() {
   fi
 }
 
-assert_verify_fails success success true skipped false true success success
-assert_verify_fails success success true skipped true true success success
-assert_verify_fails success success false skipped true true success success
-assert_verify_fails success success true success true true success success
-assert_verify_fails success success false success false true success success
-assert_verify_fails success success "" skipped false true success success
-assert_verify_fails failure success true success false true success success
-assert_verify_fails success failure true success false true success success
-assert_verify_fails success success true success false true skipped success
-assert_verify_fails success success true success false false success success
-assert_verify_fails success success true success false "" skipped success
+for compatibility_result in failure cancelled skipped '' unknown; do
+  assert_verify_fails success success true success false false skipped success "$compatibility_result"
+done
+assert_verify_fails success success true success false false skipped success
+assert_verify_fails success success false skipped false false skipped success success
+assert_verify_fails success success false skipped false false skipped success failure
+
+assert_verify_fails success success true skipped false true success success success
+assert_verify_fails success success true skipped true true success success success
+assert_verify_fails success success false skipped true true success success skipped
+assert_verify_fails success success true success true true success success success
+assert_verify_fails success success false success false true success success skipped
+assert_verify_fails success success "" skipped false true success success success
+assert_verify_fails failure success true success false true success success success
+assert_verify_fails success failure true success false true success success success
+assert_verify_fails success success true success false true skipped success success
+assert_verify_fails success success true success false false success success success
+assert_verify_fails success success true success false "" skipped success success
 
 assert_linux_verify_fails() {
   local expected="$1"
@@ -254,14 +261,15 @@ for macos_required in true false; do
 
     for failed_result in failure cancelled; do
       assert_verify_fails "$failed_result" success "$macos_required" "$macos_result" \
-        false "$musl_required" "$musl_result" success
+        false "$musl_required" "$musl_result" success "$macos_result"
       assert_verify_fails success "$failed_result" "$macos_required" "$macos_result" \
-        false "$musl_required" "$musl_result" success
+        false "$musl_required" "$musl_result" success "$macos_result"
       if [[ "$macos_required" == true ]]; then
-        assert_verify_fails success success true "$failed_result" false "$musl_required" "$musl_result" success
+        assert_verify_fails success success true "$failed_result" false "$musl_required" "$musl_result" success success
       fi
       if [[ "$musl_required" == true ]]; then
-        assert_verify_fails success success "$macos_required" "$macos_result" false true "$failed_result" success
+        assert_verify_fails success success "$macos_required" "$macos_result" false true "$failed_result" \
+          success "$macos_result"
       fi
     done
   done
@@ -282,12 +290,16 @@ body = aggregate.group(1)
 needs = re.search(r"(?m)^    needs:\n((?:      - [^\n]+\n)+)", body)
 if needs is None or "      - build-linux-cli" not in needs.group(1).splitlines():
     sys.exit("lint-build-test must need build-linux-cli")
+if "      - swift-build-macos-compatibility" not in needs.group(1).splitlines():
+    sys.exit("lint-build-test must need swift-build-macos-compatibility")
 command = re.search(r"(?m)^          \./Scripts/ci_verify_test_jobs\.sh(?:[^\n]*\\\n)+[^\n]*", body)
 if command is None:
     sys.exit("missing aggregate verifier command")
 arguments = shlex.split(command.group(0).replace("\\\n", ""))
-if len(arguments) != 9 or arguments[8] != "${{ needs.build-linux-cli.result }}":
+if len(arguments) != 10 or arguments[8] != "${{ needs.build-linux-cli.result }}":
     sys.exit("aggregate verifier argument eight must be needs.build-linux-cli.result")
+if arguments[9] != "${{ needs.swift-build-macos-compatibility.result }}":
+    sys.exit("aggregate verifier argument nine must be needs.swift-build-macos-compatibility.result")
 PY
 
 printf 'CI path gate tests passed.\n'

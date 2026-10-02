@@ -33,7 +33,7 @@ extension UsageStore {
     private struct ClaudeRefreshReconciliationInput {
         let provider: UsageProvider
         let outcome: ProviderFetchOutcome
-        let environment: [String: String]
+        @ProcessEnvironment private(set) var environment: [String: String]
         let dataSource: ClaudeUsageDataSource?
         let priorSourceLabel: String?
         let beforeFetch: ClaudeRefreshAuthState?
@@ -651,7 +651,7 @@ extension UsageStore {
         } else {
             scoped
         }
-        let backfilled = await MainActor.run { () -> UsageSnapshot? in
+        let publication = await MainActor.run { () -> (snapshot: UsageSnapshot, sessionRestored: Bool)? in
             guard self.isCurrentProviderRefreshGeneration(provider, generation: context.generation) else {
                 return nil
             }
@@ -676,7 +676,7 @@ extension UsageStore {
             let allowanceCurrent = self.resolvingCurrentCopilotAllowance(in: accountScoped, provider: provider)
             let backfilled = self.preparePublishedSnapshot(
                 allowanceCurrent, provider: provider, resetBackfillSource: resetBackfillSource, context: context)
-            let warningAccount = self.handleProviderRefreshNotifications(
+            let notifications = self.handleProviderRefreshNotifications(
                 provider: provider, result: result, snapshot: backfilled, context: context)
             self.lastKnownResetSnapshots[provider.instanceID] = backfilled
             self.snapshots[provider.instanceID] = backfilled
@@ -718,10 +718,11 @@ extension UsageStore {
                 backfilled: backfilled,
                 result: result,
                 context: context)
-            self.emitUsageUpdatedHook(provider: provider, snapshot: backfilled, rateKey: warningAccount)
-            return backfilled
+            self.emitUsageUpdatedHook(provider: provider, snapshot: backfilled, rateKey: notifications.account)
+            return (backfilled, notifications.sessionRestored)
         }
-        guard let backfilled else { return }
+        guard let publication else { return }
+        let backfilled = publication.snapshot
         self.refreshClaudeVersionAfterUserInitiatedCLIFetch(provider: provider, strategyKind: result.strategyKind)
         let isClaudeOAuthSample = provider == .claude && result.strategyKind == .oauth
         let claudeOAuthPersistentRefHash: String? = if isClaudeOAuthSample,
@@ -749,7 +750,8 @@ extension UsageStore {
                         && claudeOAuthPersistentRefHash == nil)),
             claudeOAuthActiveAccountObservation: context.claudeOAuthActiveAccountObservation,
             isClaudeOAuthSample: isClaudeOAuthSample,
-            codexLimitResetOwnerKey: context.codexLimitResetOwnerKey)
+            codexLimitResetOwnerKey: context.codexLimitResetOwnerKey,
+            sessionRestoredNotificationPending: publication.sessionRestored)
         guard self.isCurrentProviderRefreshGeneration(provider, generation: context.generation) else { return }
         if let runtime = self.providerRuntimes[provider.instanceID] {
             let runtimeContext = ProviderRuntimeContext(
@@ -821,6 +823,8 @@ extension UsageStore {
         resetBackfillSource: UsageSnapshot?,
         context: ProviderRefreshOutcomeContext) -> UsageSnapshot
     {
+        let resetBackfillSource = provider == .codex && Self.codexPlanChanged(from: resetBackfillSource, to: snapshot)
+            ? nil : resetBackfillSource
         let profileStable = self.preservingDeepSeekProfileCatalog(in: snapshot, provider: provider)
         let stabilized = Self.commandCodeSnapshotResolvingDepletionOnEnrichmentFailure(
             current: profileStable,
@@ -1315,6 +1319,12 @@ extension UsageStore {
         let shouldNotifyPermissionPrompt = Self.isPermissionPromptWaiting(error)
         await MainActor.run {
             guard self.isCurrentProviderRefreshGeneration(provider, generation: context.generation) else { return }
+            // Local Grok tokens remain fresh even when a billing outage retains an older quota snapshot.
+            if let local = grokLocalFallback {
+                self.snapshots[provider.instanceID] = self.snapshots[provider.instanceID]?
+                    .replacing(costUsage: .value(local))
+                self.publishTokenSnapshot(local, for: provider)
+            }
             self.diagnostics[provider.instanceID] = nil
             let restoredClaudeHistory = self.prepareClaudeHistoryFallback(
                 provider: provider,
@@ -1432,15 +1442,7 @@ extension UsageStore {
                 self.errors[provider.instanceID] = error.localizedDescription
                 if !preservesPriorData, !preservesClaudeWebSessionFailure {
                     self.snapshots.removeValue(forKey: provider.instanceID)
-                    // Provider-specific by design: local ~/.grok/sessions tokens remain readable
-                    // when the remote billing probe fails.
-                    if provider == .grok {
-                        if let local = grokLocalFallback {
-                            self.publishTokenSnapshot(local, for: provider)
-                        } else {
-                            self.clearTokenSnapshot(for: provider)
-                        }
-                    } else if Self.tokenCostRequiresProviderSnapshot(provider) {
+                    if Self.tokenCostRequiresProviderSnapshot(provider), grokLocalFallback == nil {
                         self.clearTokenSnapshot(for: provider)
                     }
                 }

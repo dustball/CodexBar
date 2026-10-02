@@ -58,6 +58,8 @@ Gotchas fixed:
 ## iCloud sync (CloudKit)
 Upstream-team identity-signed release builds embed `Scripts/profiles/CodexBar-DeveloperID.provisionprofile` at `Contents/embedded.provisionprofile` and claim the iCloud entitlements (`Scripts/package_app.sh` does both automatically; it fails hard if the profile file is missing). Packaging derives the team from the selected `APP_IDENTITY`; other teams omit upstream CloudKit resources. `sign-and-notarize.sh` honors that same identity, with required timestamping and hardened runtime. The profile expires 2044-07-29; Gatekeeper re-validates it at every launch.
 
+Push delivery setup is pending owner approval (#4132): enable **Push Notifications** for the macOS App ID `com.steipete.codexbar`, regenerate its Developer ID provisioning profile, and replace the profile above with one authorizing `com.apple.developer.aps-environment = production`. Then add that exact entitlement and value to the upstream release-only entitlement block in `Scripts/package_app.sh` and extend `Scripts/test_package_signing.sh`. The macOS key is `com.apple.developer.aps-environment`, not the iOS `aps-environment` key. Verify both the embedded profile and final signed app authorize it before publishing. The runtime registers only when CloudKit and a valid push entitlement are present; CKSyncEngine creates or reuses its own `CKDatabaseSubscription`, so no separate subscription or CloudKit schema change is needed. Confirm changes arrive between two signed-in Macs before closing #4132. Registration alone does not repair releases signed without this capability.
+
 Schema changes: any new record type or field in `Sources/CodexBar*/Sync/` must be reflected in `Scripts/cloudkit/schema.ckdb` and deployed **before** shipping the build:
 ```
 CLOUDKIT_MANAGEMENT_TOKEN=… Scripts/cloudkit/deploy_schema.sh development   # validate
@@ -110,7 +112,7 @@ Each Homebrew handoff uses the release tag, workflow run ID, and run attempt as 
 - [ ] Update versions (scripts/Info.plist, CHANGELOG, About text) — changelog top section must be finalized; release script pulls notes from it automatically.
 - [ ] `swiftformat`, `swiftlint`, `make test` (zero warnings/errors)
 - [ ] `./Scripts/build_icon.sh` if icon changed
-- [ ] Preflight the CLI on the release commit: `gh workflow run release-cli.yml --ref main` and wait for green. The macOS CLI jobs build with Xcode 26.3 on the macOS 15 images, older than main CI's toolchain, so type-checker regressions only show up there.
+- [ ] Preflight the CLI on the release commit: `gh workflow run release-cli.yml --ref main` and wait for green. The macOS CLI jobs use Xcode 26.3 (26.2 fallback) on the macOS 15 images. Regular CI also builds the app, CLI, and tests with Xcode 26.3 to catch older-toolchain type-checker regressions; this does not replace release-mode packaging preflight.
 - [ ] `./Scripts/sign-and-notarize.sh`
 - [ ] Generate Sparkle appcast via `Scripts/release.sh` or `Scripts/make_appcast.sh`; use `SPARKLE_PRIVATE_KEY_FILE` only if overriding Keychain signing.
   - Upload the dSYM archive alongside the app zip on the GitHub release; the release script now automates this and will fail if it’s missing.

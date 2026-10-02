@@ -1280,6 +1280,11 @@
 "session_depleted_notification_body" = "Queda un 0%. Es notificarà quan torni a estar disponible.";
 "session_depleted_notification_title" = "Quota de sessió de %@ esgotada";
 "session_restored_notification_body" = "La quota de sessió torna a estar disponible.";
+"limit_reset_notifications_title" = "Avisos de restabliment";
+"limit_reset_notifications_subtitle" = "Indica el proveïdor i la finestra quan es restableix un límit de sessió o setmanal.";
+"limit_reset_notification_title" = "Límit de %1$@ restablert (%2$@)";
+"limit_reset_notification_body" = "Hi ha quota nova disponible.";
+"limit_reset_notification_body_with_account" = "Compte %@. Hi ha quota nova disponible.";
 "session_restored_notification_title" = "Quota de sessió de %@ restablerta";
 "Settings..." = "Configuració...";
 "Source" = "Origen";

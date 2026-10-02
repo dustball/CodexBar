@@ -104,6 +104,29 @@ struct StayAwakeTests {
     }
 
     @Test
+    func `off-actor final release cleans up without a main-actor hop`() throws {
+        let settings = testSettingsStore(suiteName: #function, userDefaults: InMemoryUserDefaults())
+        settings.stayAwakeEnabled = true
+        let assertions = Assertions()
+        var store: AgentSessionsStore? = Self.store(settings, assertions)
+        store?.start()
+        store?.applyLocalScanResult([Self.session(pid: 42)])
+        #expect(store?.isKeepingAwake == true)
+
+        let retainedStore = try Unmanaged.passRetained(#require(store))
+        store = nil
+        let finished = DispatchSemaphore(value: 0)
+        Thread.detachNewThread {
+            retainedStore.release()
+            finished.signal()
+        }
+
+        // Hold the main actor until the releasing thread finishes; cleanup must not queue a hop back here.
+        #expect(finished.wait(timeout: .now() + 5) == .success)
+        #expect(assertions.counts.1 == [42])
+    }
+
+    @Test
     func `old scan cannot acquire after disabling and reenabling`() async throws {
         let settings = testSettingsStore(suiteName: "awake-stale")
         settings.stayAwakeEnabled = true
@@ -111,7 +134,7 @@ struct StayAwakeTests {
         let scan = DeferredScan()
         let store = AgentSessionsStore(
             settings: settings,
-            localScan: { _ in await scan.scan() },
+            localScan: { _, _ in await .init(sessions: scan.scan()) },
             remoteHostDiscovery: { [] },
             remoteFetch: { _ in [] },
             powerAssertion: assertions.api)
@@ -156,7 +179,7 @@ struct StayAwakeTests {
     private static func store(_ settings: SettingsStore, _ assertions: Assertions) -> AgentSessionsStore {
         AgentSessionsStore(
             settings: settings,
-            localScan: { _ in [] },
+            localScan: { _, _ in .init() },
             remoteHostDiscovery: { [] },
             remoteFetch: { _ in [] },
             powerAssertion: assertions.api,

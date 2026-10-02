@@ -311,6 +311,7 @@ public struct ProviderMenuCardPresentation: Sendable {
     public let usesSyntheticRollingRegen: Bool
     public let usesRawPrimaryResetDescription: Bool
     public let resetWindowUsesWeeklyPace: Bool
+    public let blockingQuota: (windowID: String, message: String)?
 
     public init(
         usageNotesResolver: @escaping UsageNotesResolver = { _ in .unhandled },
@@ -335,7 +336,8 @@ public struct ProviderMenuCardPresentation: Sendable {
         usesAbacusPace: Bool = false,
         usesSyntheticRollingRegen: Bool = false,
         usesRawPrimaryResetDescription: Bool = false,
-        resetWindowUsesWeeklyPace: Bool = false)
+        resetWindowUsesWeeklyPace: Bool = false,
+        blockingQuota: (windowID: String, message: String)? = nil)
     {
         self.usageNotesResolver = usageNotesResolver
         self.creditsVisibility = creditsVisibility
@@ -360,6 +362,7 @@ public struct ProviderMenuCardPresentation: Sendable {
         self.usesSyntheticRollingRegen = usesSyntheticRollingRegen
         self.usesRawPrimaryResetDescription = usesRawPrimaryResetDescription
         self.resetWindowUsesWeeklyPace = resetWindowUsesWeeklyPace
+        self.blockingQuota = blockingQuota
     }
 
     public func usageNotes(context: ProviderUsageNotesContext) -> ProviderUsageNotesResolution {
@@ -591,9 +594,8 @@ public struct ProviderUsagePresentation: Sendable {
             return order
         }
         return switch metric {
-        case .primary: [.primary, .secondary]
-        case .secondary: [.secondary, .primary]
-        case .tertiary: [.primary, .secondary]
+        case .primary, .tertiary: [.primary, .secondary, .tertiary]
+        case .secondary: [.secondary, .primary, .tertiary]
         default: []
         }
     }
@@ -660,12 +662,7 @@ public struct ProviderUsagePresentation: Sendable {
     }
 
     public static func standardSemanticWindows(snapshot: UsageSnapshot) -> ProviderSemanticWindows {
-        let candidates = [snapshot.primary, snapshot.secondary, snapshot.tertiary]
-            + (snapshot.extraRateWindows ?? []).filter(\.usageKnown).map(\.window)
-        let usable = candidates.compactMap { window -> RateWindow? in
-            guard let window, !window.isSyntheticPlaceholder else { return nil }
-            return window
-        }
+        let usable = snapshot.measuredRateWindows
         return ProviderSemanticWindows(
             session: usable.first { window in
                 guard let minutes = window.windowMinutes else { return false }

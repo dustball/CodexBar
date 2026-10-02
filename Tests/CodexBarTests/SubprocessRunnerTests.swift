@@ -179,15 +179,21 @@ struct SubprocessRunnerTests {
     /// This test was previously deleted (commit 3961770) because `waitUntilExit()` blocked
     /// the cooperative thread pool, starving the timeout task. The fix moves blocking calls
     /// to `DispatchQueue.global()`, making this test reliable.
-    @Test
+    @Test(.timeLimit(.minutes(1)))
     func `throws timed out when process hangs`() async throws {
-        let start = Date()
+        let stdin = Pipe()
+        defer {
+            try? stdin.fileHandleForWriting.close()
+            try? stdin.fileHandleForReading.close()
+        }
+        // Hold stdin open so only termination, not natural completion, can release the child.
         do {
             _ = try await SubprocessRunner.run(
-                binary: "/bin/sleep",
-                arguments: ["5"],
-                environment: ProcessInfo.processInfo.environment,
+                binary: "/bin/cat",
+                arguments: [],
+                environment: [:],
                 timeout: 1,
+                standardInput: stdin,
                 label: "hung-process-test")
             Issue.record("Expected SubprocessRunnerError.timedOut but no error was thrown")
         } catch let error as SubprocessRunnerError {
@@ -199,10 +205,6 @@ struct SubprocessRunnerTests {
         } catch {
             Issue.record("Expected SubprocessRunnerError.timedOut, got unexpected error: \(error)")
         }
-
-        let elapsed = Date().timeIntervalSince(start)
-        // Must complete in well under 5s (the sleep duration). Allow generous bound for CI.
-        #expect(elapsed < 3, "Timeout should fire in ~1s, not wait for process to exit naturally")
     }
 
     @Test
@@ -368,5 +370,54 @@ struct SubprocessRunnerTests {
             }
             #expect(count == 20, "All 20 concurrent calls should complete")
         }
+    }
+
+    @Test
+    func `reapDescendants kills a session-escaped child after the parent exits`() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codexbar-reap-\(UUID().uuidString)", isDirectory: true)
+        let childPIDFile = root.appendingPathComponent("child.pid")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            if let text = try? String(contentsOf: childPIDFile, encoding: .utf8),
+               let childPID = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines))
+            {
+                _ = kill(childPID, SIGKILL)
+            }
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let environment = ["CODEXBAR_TEST_CHILD_PID_FILE": childPIDFile.path]
+        let script = """
+        import os
+        import subprocess
+        import sys
+        import time
+
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            start_new_session=True,
+        )
+        with open(os.environ["CODEXBAR_TEST_CHILD_PID_FILE"], "w") as handle:
+            handle.write(str(child.pid))
+        time.sleep(0.4)
+        """
+
+        _ = try await SubprocessRunner.run(
+            binary: "/usr/bin/python3",
+            arguments: ["-c", script],
+            environment: environment,
+            timeout: 10,
+            currentDirectoryURL: root,
+            reapDescendants: true,
+            label: "reap-escaped-child")
+
+        let text = try String(contentsOf: childPIDFile, encoding: .utf8)
+        let childPID = try #require(pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)))
+        let deadline = Date().addingTimeInterval(1.5)
+        while kill(childPID, 0) == 0, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(kill(childPID, 0) == -1)
     }
 }

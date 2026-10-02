@@ -1312,6 +1312,11 @@
 "session_depleted_notification_body" = "Queda un 0%. Avisarémoste cando volva estar dispoñible.";
 "session_depleted_notification_title" = "Sesión de %@ esgotada";
 "session_restored_notification_body" = "A cota da sesión volve estar dispoñible.";
+"limit_reset_notifications_title" = "Avisos de restablecemento";
+"limit_reset_notifications_subtitle" = "Indica o provedor e a xanela cando se restablece un límite de sesión ou semanal.";
+"limit_reset_notification_title" = "Límite %2$@ de %1$@ restablecido";
+"limit_reset_notification_body" = "Hai cota nova dispoñible.";
+"limit_reset_notification_body_with_account" = "Conta %@. Hai cota nova dispoñible.";
 "session_restored_notification_title" = "Sesión de %@ restaurada";
 "today" = "hoxe";
 "usage_percent_suffix_left" = "restante";

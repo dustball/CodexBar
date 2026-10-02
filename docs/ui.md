@@ -8,6 +8,9 @@ read_when:
 # UI & icon
 
 ## Settings
+- Notifications → Reset notifications is off by default and uses confirmed session and weekly resets, independently of confetti. Alerts name the provider and window; account labels appear only when Hide personal info is off. The existing macOS notification permission and Focus/Do Not Disturb settings control delivery; this toggle adds no startup permission request.
+- Reset alerts and session-restored alerts share account-scoped reset receipts. Switching accounts establishes a fresh session-notification baseline. Known reset boundaries are persisted per provider, account, and window, preventing repeated banners after refreshes or restarts; a different account or a newly advanced boundary can notify independently. Without reset metadata, the existing detector requires a new usage cycle before notifying again; a new depleted episode can still produce a restored notice. Returning timestamps identify an already-announced cycle without replaying it, and previously announced boundaries stay deduplicated. The reset toggle supports portable preference export/import and remains local unless explicitly transferred.
+- Usage & Spend places its time-range picker below the title and Refresh button, keeping the header readable in narrow settings windows.
 - General → Preferred Currency supports Turkish lira (`TRY`, `₺`), New Zealand dollar (`NZD`), `SEK`, `NOK`, `DKK`, `PLN`, `BRL`, `MXN`, `ZAR`, `THB`, `IDR`, `VND`, and `UAH` alongside the existing currencies, using the shared daily exchange rates and offline fallback for cost estimates.
 - General shows the app version and build beside Quit; About keeps its Version row even for Homebrew or unsigned builds.
 - Provider accent colors use a hex field and a color picker that also previews the selected color; Reset restores the provider default.
@@ -27,12 +30,15 @@ read_when:
 - LSUIElement app: no Dock icon; status item uses custom NSImage.
 - Cached status menus and previously opened submenus follow macOS appearance changes before reopening, preserving the effective Light/Dark and accessibility appearance.
 - Merge Icons toggle combines providers into one status item with a switcher.
+- With separate icons, explicitly reordering providers in Settings reassigns CodexBar's saved menu bar slots in that order, from right to left. Recreated items retain their stable autosave and accessibility identities. Orders changed while icons are merged also update these saved slots before returning to separate icons. Ordinary refreshes and visibility recovery continue to preserve manual Command-drag placement.
 - With the automatic metric selected, switcher progress honors a provider's exhausted-quota selection before
   showing normal weekly progress. Healthy allowances, explicit metric choices, and separate provider pools
   retain their existing selection rules.
 - Normal quit removes status items with their stable identities intact, preventing retained blank menu bar slots on macOS 26.6.2 while preserving saved placement.
 - Status items receive stable autosave names before normal sizing, including during visibility recovery. Saved
-  positions beyond the widest attached display plus 512 points are cleared before creation; valid placements remain.
+  positions beyond the widest attached display plus 512 points are cleared before creation. Visibility changes and
+  removal validate positions before saving and after AppKit updates them: a missing or invalid result restores only
+  a valid previous position. Valid new positions remain untouched; unrelated defaults are never repaired by this path.
 - When Overview has selected providers, the switcher includes an Overview tab that renders up to 6 provider rows.
 - Overview row order follows provider order; selecting a row jumps to that provider detail card.
 - Menu → Overview layout offers Detailed (default) and Compact. Compact keeps provider/account headers and labeled quota bars, omits their reset/detail lines and supplemental sections, and retains detail-only providers. Select a provider for its full card. Visibility choices and the shared Usage & Spend summary continue to apply.

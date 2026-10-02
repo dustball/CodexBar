@@ -1310,6 +1310,11 @@
 "session_depleted_notification_body" = "Queda un 0%. Se te avisará cuando vuelva a estar disponible.";
 "session_depleted_notification_title" = "Cuota de sesión de %@ agotada";
 "session_restored_notification_body" = "La cuota de sesión vuelve a estar disponible.";
+"limit_reset_notifications_title" = "Avisos de reinicio";
+"limit_reset_notifications_subtitle" = "Indica el proveedor y la ventana cuando se reinicia un límite de sesión o semanal.";
+"limit_reset_notification_title" = "%1$@: límite de %2$@ reiniciado";
+"limit_reset_notification_body" = "Hay cuota nueva disponible.";
+"limit_reset_notification_body_with_account" = "Cuenta %@. Hay cuota nueva disponible.";
 "session_restored_notification_title" = "Cuota de sesión de %@ restablecida";
 "Settings..." = "Ajustes...";
 "Sign in with Claude Code..." = "Iniciar sesión con Claude Code...";

@@ -39,6 +39,11 @@ repeated checks within one operation reuse the final result. This applies to gen
 browser storage, credential repair, and CodexBar caches, without changing their permission requirements.
 
 Concurrent preflights for the same trusted application and executable share an in-flight code-signature validation.
+For the running executable (or its own main app bundle), preflight checks the ACL's signing requirement against the
+process's dynamic code identity with default Security flags, avoiding sealed-resource hashing. A bundled CLI helper
+only validates its own identity; it cannot authorize its enclosing app. Other paths and ACLs without an available
+signing requirement keep the static validator. Requirement mismatches remain confirmed rejections; other dynamic
+errors stay inconclusive.
 Completed successful validations and transient failures are not retained process-wide: executable and app metadata
 cannot detect every change to a sealed resource. The existing short, explicit operation memo can still reuse a
 generic-password preflight within that operation; it does not span asynchronous refreshes or deferred work.
@@ -66,6 +71,9 @@ When fresh cache data becomes available, CodexBar can delete and recreate its ow
 replacement is attempted at most once per cooldown; a failed retry starts another cooldown even if the old item is
 already gone. Successful replacement clears the rejection immediately, including when another first-party process wins
 the add race. Cache clearing honors an existing repair cooldown and uses no-UI deletion without requiring decrypt access.
+Signature validation during preflight has a bounded wait. If macOS stalls inside validation, preflight returns an
+inconclusive result so the caller can release its cache locks and the refresh cycle can finish. Timed-out validations
+retain their worker slots until they actually return; retries cannot create an unlimited queue of blocked workers.
 Foreign items are never recreated this way. A direct delete that is only temporarily unavailable stays retryable; it does
 not establish a stale ACL. A temporarily locked Keychain or an incomplete ACL preflight also remains retryable sooner and
 is not replaced.

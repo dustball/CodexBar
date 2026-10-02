@@ -69,6 +69,11 @@ public struct RateWindow: Codable, Equatable, Sendable {
         }
     }
 
+    /// A synthetic placeholder has no measured quota value, even when its stored percent is zero.
+    public var measured: Self? {
+        self.isSyntheticPlaceholder ? nil : self
+    }
+
     public var remainingPercent: Double {
         max(0, 100 - self.usedPercent)
     }
@@ -425,6 +430,12 @@ public struct UsageSnapshot: Codable, Sendable {
             !(self.extraRateWindows?.isEmpty ?? true)
     }
 
+    public var measuredRateWindows: [RateWindow] {
+        let windows = [self.primary, self.secondary, self.tertiary]
+            + (self.extraRateWindows ?? []).filter(\.usageKnown).map(\.window)
+        return windows.compactMap { $0?.measured }
+    }
+
     public func detailRow(label: String) -> ProviderDetailSection.Row? {
         self.details.lazy.flatMap(\.rows).first { $0.label == label }
     }
@@ -520,7 +531,7 @@ public struct UsageSnapshot: Codable, Sendable {
         return true
     }
 
-    enum Replacement<Value> {
+    package enum Replacement<Value> {
         case unchanged
         case value(Value)
 
@@ -532,12 +543,13 @@ public struct UsageSnapshot: Codable, Sendable {
         }
     }
 
-    func replacing(
+    package func replacing(
         primary: Replacement<RateWindow?> = .unchanged,
         secondary: Replacement<RateWindow?> = .unchanged,
         tertiary: Replacement<RateWindow?> = .unchanged,
         extraRateWindows: Replacement<[NamedRateWindow]?> = .unchanged,
         providerCost: Replacement<ProviderCostSnapshot?> = .unchanged,
+        costUsage: Replacement<CostUsageTokenSnapshot?> = .unchanged,
         details: Replacement<[ProviderDetailSection]> = .unchanged,
         deepseekDetailedUsageState: Replacement<DeepSeekDetailedUsageState> = .unchanged,
         deepseekPlatformProfiles: Replacement<[DeepSeekPlatformProfile]> = .unchanged,
@@ -554,7 +566,7 @@ public struct UsageSnapshot: Codable, Sendable {
             tertiary: tertiary.resolving(self.tertiary),
             extraRateWindows: extraRateWindows.resolving(self.extraRateWindows),
             providerCost: providerCost.resolving(self.providerCost),
-            costUsage: self.costUsage,
+            costUsage: costUsage.resolving(self.costUsage),
             details: details.resolving(self.details),
             deepseekDetailedUsageState: deepseekDetailedUsageState.resolving(self.deepseekDetailedUsageState),
             deepseekPlatformProfiles: deepseekPlatformProfiles.resolving(self.deepseekPlatformProfiles),
@@ -646,29 +658,23 @@ public enum UsageLimitsAvailability: Equatable, Sendable {
         // Provider-specific by design: Claude error text, Codex identity, and Doubao/Antigravity identities signal
         // whether a successful payload actually contains subscription limits.
         if provider == .claude {
-            guard snapshot == nil else { return .available }
+            if let snapshot {
+                return snapshot.primary?.isSyntheticPlaceholder == true && snapshot.measuredRateWindows.isEmpty
+                    ? .unavailable : .available
+            }
             return ClaudeStatusProbe.isSubscriptionQuotaUnavailableDescription(lastErrorDescription)
                 ? .unavailable
                 : .available
         }
 
-        if provider == .doubao || provider == .antigravity {
-            guard let snapshot,
-                  snapshot.identity(for: provider.instanceID) != nil
-            else {
-                return .available
-            }
-            return snapshot.hasRateLimitWindows ? .available : .unavailable
-        }
-
-        guard provider == .codex else { return .available }
+        guard provider == .codex || provider == .doubao || provider == .antigravity else { return .available }
 
         if let snapshot {
             guard snapshot.identity(for: provider.instanceID) != nil else { return .available }
             return snapshot.hasRateLimitWindows ? .available : .unavailable
         }
 
-        guard UsageError.isNoRateLimitsFoundDescription(lastErrorDescription),
+        guard provider == .codex, UsageError.isNoRateLimitsFoundDescription(lastErrorDescription),
               account?.hasIdentity == true
         else {
             return .available
@@ -1124,18 +1130,14 @@ private final class CodexRPCClient: @unchecked Sendable {
 // MARK: - Public fetcher used by the app
 
 public struct UsageFetcher: Sendable {
-    private let environment: [String: String]
+    @ProcessEnvironment private var environment: [String: String]
     private let initializeTimeoutSeconds: TimeInterval
     private let requestTimeoutSeconds: TimeInterval
     private let codexExecutableResolver: CodexExecutableResolver
     private let codexArguments: [String]
 
     public init(environment: [String: String] = ProcessInfo.processInfo.environment) {
-        self.environment = environment
-        self.initializeTimeoutSeconds = 8.0
-        self.requestTimeoutSeconds = 3.0
-        self.codexExecutableResolver = defaultCodexExecutableResolver
-        self.codexArguments = ["-s", "read-only", "-a", "never", "app-server"]
+        self.init(environment: environment, initializeTimeoutSeconds: 8.0, requestTimeoutSeconds: 3.0)
     }
 
     init(

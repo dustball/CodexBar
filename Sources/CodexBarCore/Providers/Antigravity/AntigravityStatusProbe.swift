@@ -90,6 +90,12 @@ public struct AntigravityStatusSnapshot: Sendable {
     public let source: AntigravityModelQuotaSource
     let quotaSummary: AntigravityQuotaSummary?
 
+    var hasKnownQuotaSummary: Bool {
+        self.quotaSummary?.groups.contains { group in
+            group.buckets.contains { !$0.disabled && $0.remainingFraction != nil }
+        } == true
+    }
+
     public init(
         modelQuotas: [AntigravityModelQuota],
         accountEmail: String?,
@@ -128,7 +134,7 @@ public struct AntigravityStatusSnapshot: Sendable {
             throw AntigravityStatusProbeError.parseFailed("No quota models available")
         }
 
-        let normalized = Self.normalizedModels(self.modelQuotas)
+        let normalized = self.modelQuotas.map(Self.normalizeModel)
         let summaryCandidates = normalized.filter(Self.isSummaryCandidate)
         let primaryQuota = Self.representative(for: .geminiAI, in: summaryCandidates)
         let secondaryQuota = Self.representative(for: .claudeGPT, in: summaryCandidates)
@@ -329,14 +335,11 @@ public struct AntigravityStatusSnapshot: Sendable {
     }
 
     private static func quotaGroupSortRank(_ group: AntigravityQuotaSummaryGroup) -> Int {
-        let title = group.displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if title.contains("gemini") {
-            return 0
+        switch self.displayTitle(forQuotaGroup: group) {
+        case "Gemini": 0
+        case "Claude/GPT": 1
+        default: 2
         }
-        if title.contains("claude") || title.contains("gpt") {
-            return 1
-        }
-        return 2
     }
 
     private static func quotaBucketSortRank(_ bucket: AntigravityQuotaSummaryBucket) -> Int {
@@ -370,8 +373,14 @@ public struct AntigravityStatusSnapshot: Sendable {
     ]
 
     private static func quotaCadenceCandidates(for bucket: AntigravityQuotaSummaryBucket) -> Set<String> {
+        let explicit = bucket.window?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let values = if let explicit, !explicit.isEmpty {
+            [explicit]
+        } else {
+            [bucket.bucketId, bucket.displayName]
+        }
         var candidates: Set<String> = []
-        for rawValue in [bucket.bucketId, bucket.displayName] {
+        for rawValue in values {
             let normalized = rawValue
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .lowercased()
@@ -516,10 +525,6 @@ public struct AntigravityStatusSnapshot: Sendable {
 
     private static func isSelectableTextModel(_ model: AntigravityNormalizedModel) -> Bool {
         !model.isLite && !model.isAutocomplete && !model.isImage
-    }
-
-    private static func normalizedModels(_ models: [AntigravityModelQuota]) -> [AntigravityNormalizedModel] {
-        models.map { self.normalizeModel($0) }
     }
 
     private static func normalizeModel(_ quota: AntigravityModelQuota) -> AntigravityNormalizedModel {
@@ -872,7 +877,7 @@ public struct AntigravityStatusProbe: Sendable {
     public func fetch(matchingAccountEmail expectedAccountEmail: String? = nil) async throws
         -> AntigravityStatusSnapshot
     {
-        let deadline = Date().addingTimeInterval(self.timeout)
+        let deadline = Self.deadlineNow().addingTimeInterval(self.timeout)
         let processInfos = try await Self.detectProcessInfos(timeout: self.timeout, scope: self.processScope)
         let result = try await Self.fetchProcessSnapshots(processInfos: processInfos) { processInfo in
             try await Self.fetch(
@@ -1458,7 +1463,7 @@ public struct AntigravityStatusProbe: Sendable {
         remainingAttemptCount: Int) -> TimeInterval?
     {
         guard let deadline else { return timeout }
-        let remaining = deadline.timeIntervalSinceNow
+        let remaining = deadline.timeIntervalSince(Self.deadlineNow())
         guard remaining > 0 else { return nil }
         return min(timeout, remaining / Double(max(1, remainingAttemptCount)))
     }
@@ -1580,12 +1585,10 @@ public struct AntigravityStatusProbe: Sendable {
                 payload: RequestPayload(
                     path: self.quotaSummaryPath,
                     body: ["forceRefresh": true]),
-                context: self.quotaSummaryRequestContext(from: context),
+                context: self.fallbackReservingRequestContext(from: context),
                 send: send,
                 parse: self.parseQuotaSummaryResponse)
-            guard quotaSummary.quotaSummary?.groups.contains(where: { group in
-                group.buckets.contains { !$0.disabled && $0.remainingFraction != nil }
-            }) == true else {
+            guard quotaSummary.hasKnownQuotaSummary else {
                 throw AntigravityStatusProbeError.parseFailed("Quota summary has no usable quota buckets")
             }
             let identity = try? await self.makeParsedRequest(
@@ -1607,7 +1610,7 @@ public struct AntigravityStatusProbe: Sendable {
                 payload: RequestPayload(
                     path: self.getUserStatusPath,
                     body: self.defaultRequestBody()),
-                context: self.legacyUserStatusRequestContext(from: context),
+                context: self.fallbackReservingRequestContext(from: context),
                 send: send,
                 parse: self.parseUserStatusResponse)
         } catch {
@@ -1621,24 +1624,14 @@ public struct AntigravityStatusProbe: Sendable {
         }
     }
 
-    private static func legacyUserStatusRequestContext(from context: RequestContext) -> RequestContext {
+    private static func fallbackReservingRequestContext(from context: RequestContext) -> RequestContext {
         guard let deadline = context.deadline else { return context }
-        let remaining = max(0, deadline.timeIntervalSinceNow)
-        let userStatusBudget = remaining / 2
+        let remaining = max(0, deadline.timeIntervalSince(Self.deadlineNow()))
+        let attemptBudget = remaining / 2
         return RequestContext(
             endpoints: context.endpoints,
-            timeout: min(context.timeout, userStatusBudget),
-            deadline: Date().addingTimeInterval(userStatusBudget))
-    }
-
-    private static func quotaSummaryRequestContext(from context: RequestContext) -> RequestContext {
-        guard let deadline = context.deadline else { return context }
-        let remaining = max(0, deadline.timeIntervalSinceNow)
-        let quotaSummaryBudget = remaining / 2
-        return RequestContext(
-            endpoints: context.endpoints,
-            timeout: min(context.timeout, quotaSummaryBudget),
-            deadline: Date().addingTimeInterval(quotaSummaryBudget))
+            timeout: min(context.timeout, attemptBudget),
+            deadline: Self.deadlineNow().addingTimeInterval(attemptBudget))
     }
 
     private static func identityRequestContext(from context: RequestContext) -> RequestContext {

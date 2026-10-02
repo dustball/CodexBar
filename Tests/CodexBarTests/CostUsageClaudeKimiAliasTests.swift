@@ -5,7 +5,7 @@ import FoundationNetworking
 import Testing
 @testable import CodexBarCore
 
-@Suite(.serialized)
+@Suite(.serialized, CostUsageClaudeCacheFixtures())
 struct CostUsageClaudeKimiAliasTests {
     private static let aliases = ["k3[1m]", "kimi-coding/k3[1m]", "kimi-for-coding/k3[1m]"]
 
@@ -148,7 +148,7 @@ struct CostUsageClaudeKimiAliasTests {
             #expect(row.totalTokens == 160)
             #expect(try abs(#require(row.costUSD) - 0.000385) < 1e-12)
             let metrics = recorder.snapshot()
-            #expect(metrics.cacheDecodes == (cold ? 0 : 1))
+            #expect(metrics.cacheDecodes == 0)
             #expect(metrics.transcriptParses == 0)
             #expect(metrics.cacheEncodes == 0)
             #expect(metrics.repricedRows == (cold ? 0 : 1))
