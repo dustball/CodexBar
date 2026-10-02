@@ -9,6 +9,11 @@ extension CodexLaunchPreflight {
         static func read(_ path: String) -> Self? {
             guard let file = try? FileHandle(forReadingFrom: URL(fileURLWithPath: path)) else { return nil }
             defer { try? file.close() }
+            return Self.read(file)
+        }
+
+        /// The caller owns the handle; reading must not reopen a pathname that may now name another file.
+        static func read(_ file: FileHandle) -> Self? {
             do {
                 let reader = try SignatureReader(file: file, length: Int(exactly: file.seekToEnd()))
                 return try Self(digest: reader.digest())

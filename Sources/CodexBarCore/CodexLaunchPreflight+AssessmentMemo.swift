@@ -1,6 +1,8 @@
 import Foundation
 
 #if os(macOS)
+import Darwin
+
 extension CodexLaunchPreflight {
     /// Remembers Gatekeeper verdicts for standalone Mach-O launch candidates.
     ///
@@ -58,13 +60,13 @@ extension CodexLaunchPreflight {
         private let hostAllowsMemoization: Bool
         private let onJoin: @Sendable () -> Void
         private let onCacheHit: @Sendable () -> Void
-        private let readSignature: @Sendable (String) -> SignatureIdentity?
+        private let readSignature: @Sendable (FileHandle) -> SignatureIdentity?
 
         init(
             hostAllowsMemoization: Bool = HostEnforcement.allowsMemoization,
             onJoin: @escaping @Sendable () -> Void = {},
             onCacheHit: @escaping @Sendable () -> Void = {},
-            readSignature: @escaping @Sendable (String) -> SignatureIdentity? = SignatureIdentity.read)
+            readSignature: @escaping @Sendable (FileHandle) -> SignatureIdentity? = SignatureIdentity.read)
         {
             self.hostAllowsMemoization = hostAllowsMemoization
             self.onJoin = onJoin
@@ -73,11 +75,26 @@ extension CodexLaunchPreflight {
         }
 
         private func identity(_ path: String) -> FileIdentity? {
+            guard Self.isStandalone(path) else { return nil }
+            let descriptor = open(path, O_RDONLY | O_CLOEXEC)
+            guard descriptor >= 0 else { return nil }
+            let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            defer { try? file.close() }
+            var info = stat()
+            guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
+                  let signature = self.readSignature(file) else { return nil }
+            let identity = FileIdentity(info: info, signature: signature)
+            // Hash the descriptor we stat'ed, then check the pathname last: it may have moved during the read.
+            guard Self.isStandalone(path), stat(path, &info) == 0,
+                  FileIdentity(info: info, signature: signature) == identity else { return nil }
+            return identity
+        }
+
+        private static func isStandalone(_ path: String) -> Bool {
             // An external npm wrapper can select app-contained code; its bundle resources are not in this key.
-            guard CodexLaunchPreflight.containingAppBundlePath(for: path) == nil else { return nil }
+            guard CodexLaunchPreflight.containingAppBundlePath(for: path) == nil else { return false }
             let resolvedPath = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-            guard CodexLaunchPreflight.containingAppBundlePath(for: resolvedPath) == nil else { return nil }
-            return FileIdentity(path: path, readSignature: self.readSignature)
+            return CodexLaunchPreflight.containingAppBundlePath(for: resolvedPath) == nil
         }
 
         /// Returns the remembered verdict for the unchanged regular file `path` names, or assesses it. Only
@@ -173,11 +190,7 @@ extension CodexLaunchPreflight {
             "/.vol/\(self.device)/\(self.inode)"
         }
 
-        /// `stat`, so a symlinked candidate resolves to the file it names right now.
-        init?(path: String, readSignature: (String) -> SignatureIdentity?) {
-            var info = stat()
-            guard stat(path, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
-                  let signature = readSignature(path) else { return nil }
+        init(info: stat, signature: SignatureIdentity) {
             self.signature = signature
             self.mode = info.st_mode
             self.device = info.st_dev

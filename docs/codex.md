@@ -168,6 +168,8 @@ and stable account numbers distinguish rows while usable workspace labels remain
   checks retain fresh assessment. Malware/quarantine checks run per lookup. npm payload selection also runs on
   every lookup using the launch environment; only the selected standalone native file's assessment can be reused.
   Selected payloads inside app bundles stay uncached, including when reached through symlinks.
+  Each identity read binds metadata and signature bytes to one open descriptor, then rechecks the pathname and
+  resolved app ancestry after hashing before storing or returning a verdict.
 - JSON-RPC over stdin/stdout:
   - `initialize` (client name/version)
   - `account/read`
